@@ -10,17 +10,11 @@ use crate::widgets::{MinimapWidget, StatusPanels};
 
 static FONT_ONCE: Once = Once::new();
 
-const HANDLE_SIZE: f32 = 4.0;
-const MIN_SECTION: f32 = 80.0;
-
 pub struct RadarApp {
     shared: Arc<Mutex<RoboMasterSignalInfo>>,
     connection_status: ConnectionStatus,
     last_update: Option<std::time::Instant>,
     _shutdown_tx: watch::Sender<bool>,
-    blood_h: f32,
-    ammo_h: f32,
-    economy_h: f32,
 }
 
 #[derive(PartialEq)]
@@ -52,9 +46,6 @@ impl Default for RadarApp {
             connection_status: ConnectionStatus::Disconnected,
             last_update: None,
             _shutdown_tx: shutdown_tx,
-            blood_h: 240.0,
-            ammo_h: 200.0,
-            economy_h: 120.0,
         }
     }
 }
@@ -92,28 +83,10 @@ impl eframe::App for RadarApp {
             });
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::BASE))
+            .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
             .show(ctx, |ui| {
-                let total = ui.available_height();
-                let gains_h = (total - self.blood_h - self.ammo_h - self.economy_h - HANDLE_SIZE * 3.0).max(MIN_SECTION);
-
-                self.draw_section(ui, self.blood_h, |ui, shared| {
-                    StatusPanels::new(shared).show_blood(ui);
-                });
-                self.draw_handle(ui, 0);
-
-                self.draw_section(ui, self.ammo_h, |ui, shared| {
-                    StatusPanels::new(shared).show_ammo(ui);
-                });
-                self.draw_handle(ui, 1);
-
-                self.draw_section(ui, self.economy_h, |ui, shared| {
-                    StatusPanels::new(shared).show_economy(ui);
-                });
-                self.draw_handle(ui, 2);
-
-                self.draw_section(ui, gains_h, |ui, shared| {
-                    StatusPanels::new(shared).show_gains(ui);
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    StatusPanels::new(self.shared.clone()).show(ui);
                 });
             });
 
@@ -122,57 +95,6 @@ impl eframe::App for RadarApp {
 }
 
 impl RadarApp {
-    fn draw_section(&self, ui: &mut egui::Ui, height: f32, add_contents: impl FnOnce(&mut egui::Ui, Arc<Mutex<RoboMasterSignalInfo>>)) {
-        let rect = egui::Rect::from_min_size(
-            ui.cursor().left_top(),
-            egui::Vec2::new(ui.available_width(), height),
-        );
-        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::left_to_right(egui::Align::TOP)), |ui| {
-            egui::Frame::new().fill(theme::BASE).inner_margin(egui::Margin::symmetric(16, 8)).show(ui, |ui| {
-                add_contents(ui, self.shared.clone());
-            });
-        });
-    }
-
-    fn draw_handle(&mut self, ui: &mut egui::Ui, index: usize) {
-        let available = ui.cursor();
-        let rect = egui::Rect::from_min_size(
-            available.left_top(),
-            egui::Vec2::new(available.width(), HANDLE_SIZE),
-        );
-
-        let id = egui::Id::new("handle").with(index);
-        let response = ui.interact(rect, id, egui::Sense::click_and_drag());
-
-        if response.hovered() || response.dragged() {
-            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeRow);
-        }
-
-        let color = if response.hovered() || response.dragged() {
-            theme::BLUE
-        } else {
-            theme::SURFACE1
-        };
-
-        ui.painter().line_segment(
-            [
-                egui::Pos2::new(rect.left() + 16.0, rect.center().y),
-                egui::Pos2::new(rect.right() - 16.0, rect.center().y),
-            ],
-            (2.0, color),
-        );
-
-        if response.dragged() {
-            let delta = response.drag_delta().y;
-            match index {
-                0 => self.blood_h = (self.blood_h + delta).max(MIN_SECTION),
-                1 => self.ammo_h = (self.ammo_h + delta).max(MIN_SECTION),
-                2 => self.economy_h = (self.economy_h + delta).max(MIN_SECTION),
-                _ => {}
-            }
-        }
-    }
-
     fn setup_fonts(&self, ctx: &egui::Context) {
         FONT_ONCE.call_once(|| {
             let mut fonts = egui::FontDefinitions::default();

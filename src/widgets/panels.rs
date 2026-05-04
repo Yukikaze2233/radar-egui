@@ -13,11 +13,12 @@ impl StatusPanels {
         Self { shared }
     }
 
-    pub fn show_blood(&self, ui: &mut egui::Ui) {
+    pub fn show(&self, ui: &mut egui::Ui) {
         let info = match self.shared.lock() {
             Ok(state) => state.clone(),
             Err(_) => return,
         };
+
         self.section_header(ui, "血量");
         self.blood_bar(ui, "英雄", info.hero_blood, 200, theme::HERO_COLOR);
         self.blood_bar(ui, "工程", info.engineer_blood, 200, theme::ENGINEER_COLOR);
@@ -25,13 +26,9 @@ impl StatusPanels {
         self.blood_bar(ui, "步兵2", info.infantry_blood_2, 200, theme::INFANTRY2_COLOR);
         self.blood_bar(ui, "前哨站", info.saven_blood, 200, theme::TEAL);
         self.blood_bar(ui, "哨兵", info.sentinel_blood, 400, theme::SENTINEL_COLOR);
-    }
 
-    pub fn show_ammo(&self, ui: &mut egui::Ui) {
-        let info = match self.shared.lock() {
-            Ok(state) => state.clone(),
-            Err(_) => return,
-        };
+        ui.add_space(48.0);
+
         self.section_header(ui, "弹药");
         egui::Grid::new("ammo_grid")
             .num_columns(2)
@@ -43,13 +40,9 @@ impl StatusPanels {
                 self.ammo_row(ui, "无人机", info.drone_ammunition, theme::DRONE_COLOR);
                 self.ammo_row(ui, "哨兵", info.sentinel_ammunition, theme::SENTINEL_COLOR);
             });
-    }
 
-    pub fn show_economy(&self, ui: &mut egui::Ui) {
-        let info = match self.shared.lock() {
-            Ok(state) => state.clone(),
-            Err(_) => return,
-        };
+        ui.add_space(48.0);
+
         self.section_header(ui, "经济");
         let econ_ratio = if info.economic_total > 0 {
             info.economic_remain as f32 / info.economic_total as f32
@@ -70,13 +63,9 @@ impl StatusPanels {
         });
         ui.add_space(6.0);
         self.progress_bar(ui, econ_ratio, theme::SAPPHIRE, None);
-    }
 
-    pub fn show_gains(&self, ui: &mut egui::Ui) {
-        let info = match self.shared.lock() {
-            Ok(state) => state.clone(),
-            Err(_) => return,
-        };
+        ui.add_space(48.0);
+
         self.section_header(ui, "增益");
         egui::Grid::new("gains_grid")
             .num_columns(6)
