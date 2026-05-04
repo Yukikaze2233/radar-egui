@@ -27,7 +27,7 @@ impl StatusPanels {
         self.blood_bar(ui, "前哨站", info.saven_blood, 200, theme::TEAL);
         self.blood_bar(ui, "哨兵", info.sentinel_blood, 400, theme::SENTINEL_COLOR);
 
-        ui.add_space(32.0);
+        ui.add_space(48.0);
 
         self.section_header(ui, "弹药");
         egui::Grid::new("ammo_grid")
@@ -41,7 +41,7 @@ impl StatusPanels {
                 self.ammo_row(ui, "哨兵", info.sentinel_ammunition, theme::SENTINEL_COLOR);
             });
 
-        ui.add_space(32.0);
+        ui.add_space(48.0);
 
         self.section_header(ui, "经济");
         let econ_ratio = if info.economic_total > 0 {
@@ -64,7 +64,7 @@ impl StatusPanels {
         ui.add_space(6.0);
         self.progress_bar(ui, econ_ratio, theme::SAPPHIRE, None);
 
-        ui.add_space(32.0);
+        ui.add_space(48.0);
 
         self.section_header(ui, "增益");
         egui::Grid::new("gains_grid")
