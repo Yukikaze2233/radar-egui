@@ -10,16 +10,11 @@ use crate::widgets::{MinimapWidget, StatusPanels};
 
 static FONT_ONCE: Once = Once::new();
 
-const DRAG_WIDTH: f32 = 6.0;
-const MIN_PANEL: f32 = 150.0;
-
 pub struct RadarApp {
     shared: Arc<Mutex<RoboMasterSignalInfo>>,
     connection_status: ConnectionStatus,
     last_update: Option<std::time::Instant>,
     _shutdown_tx: watch::Sender<bool>,
-    left_width: f32,
-    right_width: f32,
 }
 
 #[derive(PartialEq)]
@@ -51,8 +46,6 @@ impl Default for RadarApp {
             connection_status: ConnectionStatus::Disconnected,
             last_update: None,
             _shutdown_tx: shutdown_tx,
-            left_width: 400.0,
-            right_width: 400.0,
         }
     }
 }
@@ -94,83 +87,20 @@ impl eframe::App for RadarApp {
                 });
             });
 
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::BASE))
+        egui::SidePanel::left("minimap_panel")
+            .default_width(420.0)
+            .frame(egui::Frame::new().fill(theme::BASE).inner_margin(12))
             .show(ctx, |ui| {
-                let total = ui.available_width();
-                let inner = ui.available_height();
+                let minimap = MinimapWidget::new(self.shared.clone());
+                minimap.show(ui);
+            });
 
-                let remaining = total - self.left_width - self.right_width - DRAG_WIDTH * 2.0;
-                if remaining < MIN_PANEL {
-                    let deficit = MIN_PANEL - remaining;
-                    self.left_width = (self.left_width - deficit * 0.5).max(MIN_PANEL);
-                    self.right_width = (self.right_width - deficit * 0.5).max(MIN_PANEL);
-                }
-
-                ui.horizontal(|ui| {
-                    // Left panel: minimap
-                    let left_rect = egui::Rect::from_min_size(
-                        ui.cursor().left_top(),
-                        egui::Vec2::new(self.left_width, inner),
-                    );
-                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(left_rect), |ui| {
-                        egui::Frame::new()
-                            .fill(theme::BASE)
-                            .inner_margin(12.0)
-                            .show(ui, |ui| {
-                                let minimap = MinimapWidget::new(self.shared.clone());
-                                minimap.show(ui);
-                            });
-                    });
-
-                    // Drag handle 1
-                    let handle1_rect = egui::Rect::from_min_size(
-                        egui::Pos2::new(left_rect.right(), left_rect.top()),
-                        egui::Vec2::new(DRAG_WIDTH, inner),
-                    );
-                    self.drag_handle(ui, handle1_rect, true);
-
-                    // Middle panel: blood + ammo + economy
-                    let mid_x = left_rect.right() + DRAG_WIDTH;
-                    let mid_w = total - self.left_width - self.right_width - DRAG_WIDTH * 2.0;
-                    let mid_rect = egui::Rect::from_min_size(
-                        egui::Pos2::new(mid_x, left_rect.top()),
-                        egui::Vec2::new(mid_w.max(MIN_PANEL), inner),
-                    );
-                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(mid_rect), |ui| {
-                        egui::Frame::new()
-                            .fill(theme::BASE)
-                            .inner_margin(16.0)
-                            .show(ui, |ui| {
-                                egui::ScrollArea::vertical().show(ui, |ui| {
-                                    let panels = StatusPanels::new(self.shared.clone());
-                                    panels.show(ui);
-                                });
-                            });
-                    });
-
-                    // Drag handle 2
-                    let handle2_rect = egui::Rect::from_min_size(
-                        egui::Pos2::new(mid_rect.right(), mid_rect.top()),
-                        egui::Vec2::new(DRAG_WIDTH, inner),
-                    );
-                    self.drag_handle(ui, handle2_rect, false);
-
-                    // Right panel: gains + detail
-                    let right_x = mid_rect.right() + DRAG_WIDTH;
-                    let right_rect = egui::Rect::from_min_size(
-                        egui::Pos2::new(right_x, mid_rect.top()),
-                        egui::Vec2::new(self.right_width, inner),
-                    );
-                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(right_rect), |ui| {
-                        egui::Frame::new()
-                            .fill(theme::BASE)
-                            .inner_margin(16.0)
-                            .show(ui, |ui| {
-                                let panels = StatusPanels::new(self.shared.clone());
-                                panels.show_gains(ui);
-                            });
-                    });
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    let panels = StatusPanels::new(self.shared.clone());
+                    panels.show(ui);
                 });
             });
 
@@ -179,37 +109,6 @@ impl eframe::App for RadarApp {
 }
 
 impl RadarApp {
-    fn drag_handle(&mut self, ui: &mut egui::Ui, rect: egui::Rect, is_left: bool) {
-        let response = ui.interact(rect, egui::Id::new(format!("drag_{}", is_left)), egui::Sense::click_and_drag());
-
-        if response.hovered() || response.dragged() {
-            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeColumn);
-        }
-
-        let handle_color = if response.hovered() || response.dragged() {
-            theme::BLUE
-        } else {
-            theme::SURFACE1
-        };
-        let center_x = rect.center().x;
-        ui.painter().line_segment(
-            [
-                egui::Pos2::new(center_x, rect.top() + 8.0),
-                egui::Pos2::new(center_x, rect.bottom() - 8.0),
-            ],
-            (2.0, handle_color),
-        );
-
-        if response.dragged() {
-            let delta = response.drag_delta().x;
-            if is_left {
-                self.left_width = (self.left_width + delta).max(MIN_PANEL);
-            } else {
-                self.right_width = (self.right_width - delta).max(MIN_PANEL);
-            }
-        }
-    }
-
     fn setup_fonts(&self, ctx: &egui::Context) {
         FONT_ONCE.call_once(|| {
             let mut fonts = egui::FontDefinitions::default();
