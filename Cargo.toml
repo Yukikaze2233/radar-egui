@@ -1,0 +1,19 @@
+[package]
+name = "radar-egui"
+version = "0.1.0"
+edition = "2021"
+description = "Real-time radar HUD for RoboMaster competition"
+
+[dependencies]
+eframe = { version = "0.31", features = ["default"] }
+egui = "0.31"
+tokio = { version = "1", features = ["full"] }
+log = "0.4"
+env_logger = "0.11"
+
+[features]
+rerun = []
+
+[profile.release]
+opt-level = 2
+lto = "thin"
