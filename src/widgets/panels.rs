@@ -63,8 +63,13 @@ impl StatusPanels {
         });
         ui.add_space(6.0);
         self.progress_bar(ui, econ_ratio, theme::SAPPHIRE, None);
+    }
 
-        ui.add_space(32.0);
+    pub fn show_gains(&self, ui: &mut egui::Ui) {
+        let info = match self.shared.lock() {
+            Ok(state) => state.clone(),
+            Err(_) => return,
+        };
 
         self.section_header(ui, "增益");
         egui::Grid::new("gains_grid")
