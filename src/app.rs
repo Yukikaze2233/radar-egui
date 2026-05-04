@@ -15,7 +15,6 @@ pub struct RadarApp {
     connection_status: ConnectionStatus,
     last_update: Option<std::time::Instant>,
     _shutdown_tx: watch::Sender<bool>,
-    panels: StatusPanels,
 }
 
 #[derive(PartialEq)]
@@ -43,11 +42,10 @@ impl Default for RadarApp {
         });
 
         Self {
-            shared: shared.clone(),
+            shared,
             connection_status: ConnectionStatus::Disconnected,
             last_update: None,
             _shutdown_tx: shutdown_tx,
-            panels: StatusPanels::new(shared),
         }
     }
 }
@@ -97,12 +95,38 @@ impl eframe::App for RadarApp {
                 minimap.show(ui);
             });
 
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
+        egui::TopBottomPanel::top("blood_panel")
+            .resizable(true)
+            .default_height(240.0)
+            .frame(egui::Frame::new().fill(theme::BASE).inner_margin(egui::Margin::symmetric(16, 8)))
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    self.panels.show(ui);
-                });
+                let panels = StatusPanels::new(self.shared.clone());
+                panels.show_blood(ui);
+            });
+
+        egui::TopBottomPanel::top("ammo_panel")
+            .resizable(true)
+            .default_height(200.0)
+            .frame(egui::Frame::new().fill(theme::BASE).inner_margin(egui::Margin::symmetric(16, 8)))
+            .show(ctx, |ui| {
+                let panels = StatusPanels::new(self.shared.clone());
+                panels.show_ammo(ui);
+            });
+
+        egui::TopBottomPanel::top("economy_panel")
+            .resizable(true)
+            .default_height(120.0)
+            .frame(egui::Frame::new().fill(theme::BASE).inner_margin(egui::Margin::symmetric(16, 8)))
+            .show(ctx, |ui| {
+                let panels = StatusPanels::new(self.shared.clone());
+                panels.show_economy(ui);
+            });
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(theme::BASE).inner_margin(egui::Margin::symmetric(16, 8)))
+            .show(ctx, |ui| {
+                let panels = StatusPanels::new(self.shared.clone());
+                panels.show_gains(ui);
             });
 
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
