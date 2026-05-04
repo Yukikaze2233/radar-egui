@@ -4,93 +4,168 @@ use std::sync::{Arc, Mutex};
 use crate::protocol::RoboMasterSignalInfo;
 use crate::theme;
 
+const HANDLE_HEIGHT: f32 = 6.0;
+const MIN_SECTION: f32 = 60.0;
+
 pub struct StatusPanels {
     shared: Arc<Mutex<RoboMasterSignalInfo>>,
+    blood_height: f32,
+    ammo_height: f32,
+    economy_height: f32,
 }
 
 impl StatusPanels {
     pub fn new(shared: Arc<Mutex<RoboMasterSignalInfo>>) -> Self {
-        Self { shared }
+        Self {
+            shared,
+            blood_height: 220.0,
+            ammo_height: 180.0,
+            economy_height: 100.0,
+        }
     }
 
-    pub fn show(&self, ui: &mut egui::Ui) {
+    pub fn show(&mut self, ui: &mut egui::Ui) {
         let info = match self.shared.lock() {
             Ok(state) => state.clone(),
             Err(_) => return,
         };
 
-        self.section_header(ui, "血量");
-        self.blood_bar(ui, "英雄", info.hero_blood, 200, theme::HERO_COLOR);
-        self.blood_bar(ui, "工程", info.engineer_blood, 200, theme::ENGINEER_COLOR);
-        self.blood_bar(ui, "步兵1", info.infantry_blood_1, 200, theme::INFANTRY1_COLOR);
-        self.blood_bar(ui, "步兵2", info.infantry_blood_2, 200, theme::INFANTRY2_COLOR);
-        self.blood_bar(ui, "前哨站", info.saven_blood, 200, theme::TEAL);
-        self.blood_bar(ui, "哨兵", info.sentinel_blood, 400, theme::SENTINEL_COLOR);
+        let total_h = ui.available_height();
+        let gains_height = (total_h - self.blood_height - self.ammo_height - self.economy_height
+            - HANDLE_HEIGHT * 3.0)
+            .max(MIN_SECTION);
 
-        ui.add_space(48.0);
+        // Blood
+        self.section_with_height(ui, self.blood_height, |ui| {
+            self.section_header(ui, "血量");
+            self.blood_bar(ui, "英雄", info.hero_blood, 200, theme::HERO_COLOR);
+            self.blood_bar(ui, "工程", info.engineer_blood, 200, theme::ENGINEER_COLOR);
+            self.blood_bar(ui, "步兵1", info.infantry_blood_1, 200, theme::INFANTRY1_COLOR);
+            self.blood_bar(ui, "步兵2", info.infantry_blood_2, 200, theme::INFANTRY2_COLOR);
+            self.blood_bar(ui, "前哨站", info.saven_blood, 200, theme::TEAL);
+            self.blood_bar(ui, "哨兵", info.sentinel_blood, 400, theme::SENTINEL_COLOR);
+        });
+        self.section_separator(ui, 0);
 
-        self.section_header(ui, "弹药");
-        egui::Grid::new("ammo_grid")
-            .num_columns(2)
-            .spacing([32.0, 8.0])
-            .show(ui, |ui| {
-                self.ammo_row(ui, "英雄", info.hero_ammunition, theme::HERO_COLOR);
-                self.ammo_row(ui, "步兵1", info.infantry_ammunition_1, theme::INFANTRY1_COLOR);
-                self.ammo_row(ui, "步兵2", info.infantry_ammunition_2, theme::INFANTRY2_COLOR);
-                self.ammo_row(ui, "无人机", info.drone_ammunition, theme::DRONE_COLOR);
-                self.ammo_row(ui, "哨兵", info.sentinel_ammunition, theme::SENTINEL_COLOR);
+        // Ammo
+        self.section_with_height(ui, self.ammo_height, |ui| {
+            self.section_header(ui, "弹药");
+            egui::Grid::new("ammo_grid")
+                .num_columns(2)
+                .spacing([32.0, 8.0])
+                .show(ui, |ui| {
+                    self.ammo_row(ui, "英雄", info.hero_ammunition, theme::HERO_COLOR);
+                    self.ammo_row(ui, "步兵1", info.infantry_ammunition_1, theme::INFANTRY1_COLOR);
+                    self.ammo_row(ui, "步兵2", info.infantry_ammunition_2, theme::INFANTRY2_COLOR);
+                    self.ammo_row(ui, "无人机", info.drone_ammunition, theme::DRONE_COLOR);
+                    self.ammo_row(ui, "哨兵", info.sentinel_ammunition, theme::SENTINEL_COLOR);
+                });
+        });
+        self.section_separator(ui, 1);
+
+        // Economy
+        self.section_with_height(ui, self.economy_height, |ui| {
+            self.section_header(ui, "经济");
+            let econ_ratio = if info.economic_total > 0 {
+                info.economic_remain as f32 / info.economic_total as f32
+            } else {
+                0.0
+            };
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!("{}", info.economic_remain))
+                        .color(theme::TEXT)
+                        .size(24.0),
+                );
+                ui.label(
+                    RichText::new(format!(" / {}", info.economic_total))
+                        .color(theme::OVERLAY0)
+                        .size(16.0),
+                );
             });
+            ui.add_space(6.0);
+            self.progress_bar(ui, econ_ratio, theme::SAPPHIRE, None);
+        });
+        self.section_separator(ui, 2);
 
-        ui.add_space(48.0);
+        // Gains (fills remaining space)
+        self.section_with_height(ui, gains_height, |ui| {
+            self.section_header(ui, "增益");
+            egui::Grid::new("gains_grid")
+                .num_columns(6)
+                .spacing([20.0, 8.0])
+                .show(ui, |ui| {
+                    ui.label(RichText::new("机器人").color(theme::SUBTEXT0).size(14.0));
+                    ui.label(RichText::new("回血").color(theme::SUBTEXT0).size(14.0));
+                    ui.label(RichText::new("冷却").color(theme::SUBTEXT0).size(14.0));
+                    ui.label(RichText::new("防御").color(theme::SUBTEXT0).size(14.0));
+                    ui.label(RichText::new("降防").color(theme::SUBTEXT0).size(14.0));
+                    ui.label(RichText::new("攻击").color(theme::SUBTEXT0).size(14.0));
+                    ui.end_row();
 
-        self.section_header(ui, "经济");
-        let econ_ratio = if info.economic_total > 0 {
-            info.economic_remain as f32 / info.economic_total as f32
+                    self.gain_row(ui, "英雄", &info.hero_gain, theme::HERO_COLOR);
+                    self.gain_row(ui, "工程", &info.engineer_gain, theme::ENGINEER_COLOR);
+                    self.gain_row(ui, "步兵1", &info.infantry_gain_1, theme::INFANTRY1_COLOR);
+                    self.gain_row(ui, "步兵2", &info.infantry_gain_2, theme::INFANTRY2_COLOR);
+                    self.gain_row(ui, "哨兵", &info.sentinel_gain, theme::SENTINEL_COLOR);
+                });
+
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("哨兵姿态").color(theme::SUBTEXT0).size(14.0));
+                ui.label(RichText::new(format!("{}", info.sentinel_posture)).color(theme::TEXT).size(16.0));
+            });
+        });
+    }
+
+    fn section_with_height(&self, ui: &mut egui::Ui, height: f32, add_contents: impl FnOnce(&mut egui::Ui)) {
+        let rect = ui.cursor();
+        let section_rect = egui::Rect::from_min_size(
+            rect.left_top(),
+            Vec2::new(rect.width(), height),
+        );
+        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(section_rect), |ui| {
+            add_contents(ui);
+        });
+    }
+
+    fn section_separator(&mut self, ui: &mut egui::Ui, index: usize) {
+        let available = ui.cursor();
+        let rect = egui::Rect::from_min_size(
+            available.left_top(),
+            Vec2::new(available.width(), HANDLE_HEIGHT),
+        );
+
+        let id = egui::Id::new("section_drag").with(index);
+        let response = ui.interact(rect, id, egui::Sense::click_and_drag());
+
+        if response.hovered() || response.dragged() {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeRow);
+        }
+
+        let color = if response.hovered() || response.dragged() {
+            theme::BLUE
         } else {
-            0.0
+            theme::SURFACE1
         };
-        ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(format!("{}", info.economic_remain))
-                    .color(theme::TEXT)
-                    .size(24.0),
-            );
-            ui.label(
-                RichText::new(format!(" / {}", info.economic_total))
-                    .color(theme::OVERLAY0)
-                    .size(16.0),
-            );
-        });
-        ui.add_space(6.0);
-        self.progress_bar(ui, econ_ratio, theme::SAPPHIRE, None);
+        let center_y = rect.center().y;
+        ui.painter().line_segment(
+            [
+                Pos2::new(rect.left() + 8.0, center_y),
+                Pos2::new(rect.right() - 8.0, center_y),
+            ],
+            (2.0, color),
+        );
 
-        ui.add_space(48.0);
-
-        self.section_header(ui, "增益");
-        egui::Grid::new("gains_grid")
-            .num_columns(6)
-            .spacing([20.0, 8.0])
-            .show(ui, |ui| {
-                ui.label(RichText::new("机器人").color(theme::SUBTEXT0).size(14.0));
-                ui.label(RichText::new("回血").color(theme::SUBTEXT0).size(14.0));
-                ui.label(RichText::new("冷却").color(theme::SUBTEXT0).size(14.0));
-                ui.label(RichText::new("防御").color(theme::SUBTEXT0).size(14.0));
-                ui.label(RichText::new("降防").color(theme::SUBTEXT0).size(14.0));
-                ui.label(RichText::new("攻击").color(theme::SUBTEXT0).size(14.0));
-                ui.end_row();
-
-                self.gain_row(ui, "英雄", &info.hero_gain, theme::HERO_COLOR);
-                self.gain_row(ui, "工程", &info.engineer_gain, theme::ENGINEER_COLOR);
-                self.gain_row(ui, "步兵1", &info.infantry_gain_1, theme::INFANTRY1_COLOR);
-                self.gain_row(ui, "步兵2", &info.infantry_gain_2, theme::INFANTRY2_COLOR);
-                self.gain_row(ui, "哨兵", &info.sentinel_gain, theme::SENTINEL_COLOR);
-            });
-
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("哨兵姿态").color(theme::SUBTEXT0).size(14.0));
-            ui.label(RichText::new(format!("{}", info.sentinel_posture)).color(theme::TEXT).size(16.0));
-        });
+        if response.dragged() {
+            let delta = response.drag_delta().y;
+            match index {
+                0 => self.blood_height = (self.blood_height + delta).max(MIN_SECTION),
+                1 => self.ammo_height = (self.ammo_height + delta).max(MIN_SECTION),
+                2 => self.economy_height = (self.economy_height + delta).max(MIN_SECTION),
+                _ => {}
+            }
+        }
     }
 
     fn section_header(&self, ui: &mut egui::Ui, title: &str) {

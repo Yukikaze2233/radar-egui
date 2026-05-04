@@ -15,6 +15,7 @@ pub struct RadarApp {
     connection_status: ConnectionStatus,
     last_update: Option<std::time::Instant>,
     _shutdown_tx: watch::Sender<bool>,
+    panels: StatusPanels,
 }
 
 #[derive(PartialEq)]
@@ -42,10 +43,11 @@ impl Default for RadarApp {
         });
 
         Self {
-            shared,
+            shared: shared.clone(),
             connection_status: ConnectionStatus::Disconnected,
             last_update: None,
             _shutdown_tx: shutdown_tx,
+            panels: StatusPanels::new(shared),
         }
     }
 }
@@ -99,8 +101,7 @@ impl eframe::App for RadarApp {
             .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    let panels = StatusPanels::new(self.shared.clone());
-                    panels.show(ui);
+                    self.panels.show(ui);
                 });
             });
 
