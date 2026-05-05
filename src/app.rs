@@ -14,7 +14,7 @@ pub struct RadarApp {
     shared: Arc<Mutex<RoboMasterSignalInfo>>,
     connection_status: ConnectionStatus,
     last_update: Option<std::time::Instant>,
-    _shutdown_tx: watch::Sender<bool>,
+    shutdown_tx: watch::Sender<bool>,
     ip: String,
     port: String,
     error_message: Option<String>,
@@ -34,11 +34,12 @@ impl Default for RadarApp {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
         let shared_clone = shared.clone();
+        let addr = "127.0.0.1:2000".to_string();
         thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             rt.block_on(async move {
                 tcp_client::run_signal_client(
-                    "127.0.0.1:2000",
+                    &addr,
                     shared_clone,
                     shutdown_rx,
                 )
@@ -50,13 +51,44 @@ impl Default for RadarApp {
             shared,
             connection_status: ConnectionStatus::Disconnected,
             last_update: None,
-            _shutdown_tx: shutdown_tx,
+            shutdown_tx,
             ip: "127.0.0.1".to_string(),
             port: "2000".to_string(),
             error_message: None,
             data_count: 0,
             start_time: std::time::Instant::now(),
         }
+    }
+}
+
+impl RadarApp {
+    fn reconnect(&mut self) {
+        // Send shutdown signal to current client
+        let _ = self.shutdown_tx.send(true);
+
+        // Create new shutdown channel
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        self.shutdown_tx = shutdown_tx;
+
+        // Reset state
+        self.connection_status = ConnectionStatus::Disconnected;
+        self.last_update = None;
+        self.error_message = None;
+
+        // Start new client thread
+        let shared = self.shared.clone();
+        let addr = format!("{}:{}", self.ip, self.port);
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+            rt.block_on(async move {
+                tcp_client::run_signal_client(
+                    &addr,
+                    shared,
+                    shutdown_rx,
+                )
+                .await;
+            });
+        });
     }
 }
 
@@ -89,8 +121,7 @@ impl eframe::App for RadarApp {
                     ui.add(egui::TextEdit::singleline(&mut self.port).desired_width(60.0));
                     
                     if ui.button("Connect").clicked() {
-                        // TODO: Implement reconnect logic
-                        self.error_message = Some("Reconnect not implemented yet".to_string());
+                        self.reconnect();
                     }
                     
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
