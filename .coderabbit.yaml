@@ -1,0 +1,22 @@
+# .coderabbit.yaml
+language: zh-CN
+reviews:
+  auto_review:
+    enabled: true
+    drafts: false
+    ignore:
+      - "**/target/**"
+      - "**/node_modules/**"
+      - "**/.git/**"
+  path_instructions:
+    - path: "src/**"
+      instructions: "Follow existing code style, Catppuccin Mocha theme, egui patterns"
+  review:
+    focus:
+      - "security"
+      - "performance"
+      - "logic"
+      - "architecture"
+    ignore:
+      - "missing-docstring"
+      - "unused-imports"
