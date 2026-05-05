@@ -1,0 +1,40 @@
+# radar-egui 开发记录
+
+## 2026-05-05
+
+### 项目初始化
+- 创建 Cargo 项目，依赖：eframe 0.31, egui 0.31, tokio, log, env_logger
+- 模块结构：main.rs, protocol.rs, tcp_client.rs, app.rs, theme.rs, widgets/
+
+### 数据模型
+- 实现 RoboMasterSignalInfo 结构体，匹配 Python SDR 的数据格式
+- 实现 parse_signal() 二进制解析器，滑动窗口扫描 cmd_id
+
+### TCP 客户端
+- 实现 tokio 异步 TCP 客户端，连接 127.0.0.1:2000
+- 支持自动重连，buffer 累积 ≥200 字节后解析
+
+### UI 设计
+- 采用 Catppuccin Mocha 配色（柔和暗色）
+- 字体：JetBrainsMono NFP (英文) + LXGW WenKai (中文)
+- 布局：左侧小地图 (可拖拽宽度) + 右侧状态面板
+
+### 状态面板
+- 血量：Grid 布局对齐，进度条显示
+- 弹药：数值网格
+- 经济：大号数值 + 进度条
+- 增益：6 列表格 + 哨兵姿态
+
+### 尝试过的方案（已回退）
+- TopBottomPanel::resizable(true) - 拖拽手柄不工作
+- 手动拖拽手柄 - 对齐问题
+- 三面板可拖拽布局 - 用户不需要
+
+### 当前状态
+- 右侧面板固定间距 48px，不可拖拽
+- 小地图可拖拽宽度
+- 字体已增大，行间距已拉大
+
+## 待办
+- [ ] 连接实际 SDR 数据测试
+- [ ] 优化 UI 细节
