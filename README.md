@@ -85,6 +85,15 @@ radar-egui 从 `alliance_radar_sdr` 通过 TCP 接收数据：
 
 字节序：大部分字段大端序，增益子字段中 2 字节部分为小端序。
 
+## 可用接口
+
+| 端口 | 方向 | 数据 | 状态 |
+|------|------|------|------|
+| `127.0.0.1:2000` | 接收 | 信号流 (102 bytes) | ✅ 已对接 |
+| `127.0.0.1:3000` | 接收 | 噪声流 (7 bytes) | ❌ 未对接 |
+| `192.168.1.10:2000` | 接收 | 数据中心标记 (12 bytes) | ❌ 未对接 |
+| `192.168.1.10:3000` | 发送 | 位置+噪声数据 | ❌ 未对接 |
+
 ## 模块结构
 
 ```
@@ -92,7 +101,9 @@ src/
 ├── main.rs           # 入口，egui 窗口初始化
 ├── protocol.rs       # RoboMasterSignalInfo 结构体 + 二进制解析器
 ├── tcp_client.rs     # 异步 TCP 客户端，自动重连
-├── app.rs            # egui 应用，4 面板布局
+├── rerun_viz.rs      # Rerun 3D 可视化集成
+├── app.rs            # egui 应用，布局和交互
+├── theme.rs          # Catppuccin Mocha 配色
 └── widgets/
     ├── mod.rs        # 重导出
     ├── minimap.rs    # 2D 战场小地图 (Painter)
@@ -104,6 +115,21 @@ src/
 - `eframe` / `egui` — 即时模式 GUI
 - `tokio` — 异步 TCP 客户端
 - `log` / `env_logger` — 日志
+- `rerun` — 3D 可视化（可选）
+
+## 构建与运行
+
+```bash
+# 基础版本
+cargo build --release
+cargo run --release
+
+# 带 Rerun 3D 可视化
+cargo run --features rerun
+
+# 带日志
+RUST_LOG=info cargo run --release
+```
 
 ## 许可证
 
