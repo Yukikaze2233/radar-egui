@@ -15,6 +15,11 @@ pub struct RadarApp {
     connection_status: ConnectionStatus,
     last_update: Option<std::time::Instant>,
     _shutdown_tx: watch::Sender<bool>,
+    ip: String,
+    port: String,
+    error_message: Option<String>,
+    data_count: u64,
+    start_time: std::time::Instant,
 }
 
 #[derive(PartialEq)]
@@ -46,6 +51,11 @@ impl Default for RadarApp {
             connection_status: ConnectionStatus::Disconnected,
             last_update: None,
             _shutdown_tx: shutdown_tx,
+            ip: "127.0.0.1".to_string(),
+            port: "2000".to_string(),
+            error_message: None,
+            data_count: 0,
+            start_time: std::time::Instant::now(),
         }
     }
 }
@@ -56,16 +66,33 @@ impl eframe::App for RadarApp {
         self.update_connection_status();
         self.apply_theme(ctx);
 
+        // Top bar with connection status and settings
         egui::TopBottomPanel::top("top_bar")
             .frame(egui::Frame::new().fill(theme::MANTLE).inner_margin(egui::Margin::symmetric(16, 10)))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("radar hud").color(theme::SUBTEXT0).size(16.0));
                     ui.separator();
+                    
+                    // Connection status
                     match self.connection_status {
                         ConnectionStatus::Connected => ui.colored_label(theme::CONNECTED, "● Connected"),
                         ConnectionStatus::Disconnected => ui.colored_label(theme::DISCONNECTED, "● Disconnected"),
                     };
+                    
+                    ui.separator();
+                    
+                    // Connection settings
+                    ui.label(egui::RichText::new("IP:").color(theme::SUBTEXT0).size(14.0));
+                    ui.add(egui::TextEdit::singleline(&mut self.ip).desired_width(120.0));
+                    ui.label(egui::RichText::new("Port:").color(theme::SUBTEXT0).size(14.0));
+                    ui.add(egui::TextEdit::singleline(&mut self.port).desired_width(60.0));
+                    
+                    if ui.button("Connect").clicked() {
+                        // TODO: Implement reconnect logic
+                        self.error_message = Some("Reconnect not implemented yet".to_string());
+                    }
+                    
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if let Some(last) = self.last_update {
                             let elapsed = last.elapsed().as_secs_f32();
@@ -75,6 +102,28 @@ impl eframe::App for RadarApp {
                 });
             });
 
+        // Bottom status bar
+        egui::TopBottomPanel::bottom("status_bar")
+            .frame(egui::Frame::new().fill(theme::MANTLE).inner_margin(egui::Margin::symmetric(16, 8)))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let uptime = self.start_time.elapsed().as_secs();
+                    ui.label(egui::RichText::new(format!("Uptime: {}s", uptime)).color(theme::SUBTEXT0).size(12.0));
+                    ui.separator();
+                    ui.label(egui::RichText::new(format!("Data: {}", self.data_count)).color(theme::SUBTEXT0).size(12.0));
+                    ui.separator();
+                    ui.label(egui::RichText::new(format!("Target: {}:{}", self.ip, self.port)).color(theme::SUBTEXT0).size(12.0));
+                    
+                    // Error message
+                    if let Some(err) = &self.error_message {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(egui::RichText::new(format!("⚠ {}", err)).color(theme::RED).size(12.0));
+                        });
+                    }
+                });
+            });
+
+        // Left panel: minimap
         egui::SidePanel::left("minimap_panel")
             .default_width(420.0)
             .frame(egui::Frame::new().fill(theme::BASE).inner_margin(12))
@@ -82,6 +131,7 @@ impl eframe::App for RadarApp {
                 MinimapWidget::new(self.shared.clone()).show(ui);
             });
 
+        // Central panel: status panels
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
             .show(ctx, |ui| {
@@ -160,9 +210,12 @@ impl RadarApp {
             if !is_default {
                 self.connection_status = ConnectionStatus::Connected;
                 self.last_update = Some(std::time::Instant::now());
+                self.data_count += 1;
+                self.error_message = None;
             } else if let Some(last) = self.last_update {
                 if last.elapsed().as_secs() > 5 {
                     self.connection_status = ConnectionStatus::Disconnected;
+                    self.error_message = Some("Connection lost".to_string());
                 }
             }
         }
