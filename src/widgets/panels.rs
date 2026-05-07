@@ -71,6 +71,25 @@ impl StatusPanels {
 
         ui.add_space(48.0);
 
+        self.section_header(ui, "占领状态");
+        egui::Grid::new("occupation_grid")
+            .num_columns(6)
+            .spacing([16.0, 8.0])
+            .show(ui, |ui| {
+                let labels = ["A", "B", "C", "D", "E", "F"];
+                for (i, label) in labels.iter().enumerate() {
+                    let color = if info.occupation_status[i] != 0 {
+                        theme::GREEN
+                    } else {
+                        theme::OVERLAY0
+                    };
+                    ui.label(RichText::new(*label).color(color).size(18.0));
+                }
+                ui.end_row();
+            });
+
+        ui.add_space(48.0);
+
         self.section_header(ui, "增益");
         egui::Grid::new("gains_grid")
             .num_columns(6)
