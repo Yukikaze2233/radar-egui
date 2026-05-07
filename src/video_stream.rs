@@ -1,149 +1,61 @@
-#[cfg(feature = "video")]
 use std::sync::{Arc, Mutex};
 
-#[cfg(feature = "video")]
-use gst::prelude::*;
-#[cfg(feature = "video")]
-use gst_app::AppSink;
+use tokio::io::AsyncReadExt;
+use tokio::net::UnixStream;
+use tokio::sync::watch;
 
-#[cfg(feature = "video")]
 pub struct VideoFrame {
     pub data: Vec<u8>,
     pub width: u32,
     pub height: u32,
 }
 
-#[cfg(feature = "video")]
-pub struct VideoStream {
-    pipeline: Option<gst::Pipeline>,
-    frame: Arc<Mutex<Option<VideoFrame>>>,
-}
-
-#[cfg(feature = "video")]
-impl VideoStream {
-    pub fn new() -> Self {
-        Self {
-            pipeline: None,
-            frame: Arc::new(Mutex::new(None)),
+pub async fn run_video_client(
+    path: &str,
+    shared: Arc<Mutex<Option<VideoFrame>>>,
+    mut shutdown: watch::Receiver<bool>,
+) {
+    let stream = match UnixStream::connect(path).await {
+        Ok(s) => {
+            log::info!("Video client connected to {}", path);
+            s
         }
-    }
+        Err(e) => {
+            log::error!("Failed to connect to video socket {}: {}", path, e);
+            return;
+        }
+    };
 
-    pub fn start(&mut self, sdp_path: &str) -> bool {
-        gst::init().ok();
+    let (mut reader, _writer) = stream.into_split();
+    let mut header_buf = [0u8; 8];
 
-        let pipeline_str = format!(
-            "filesrc location={} ! sdpdemux ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=sink emit-signals=true",
-            sdp_path
-        );
+    loop {
+        tokio::select! {
+            result = reader.read_exact(&mut header_buf) => {
+                if result.is_ok() {
+                    let width = u32::from_le_bytes(header_buf[0..4].try_into().unwrap());
+                    let height = u32::from_le_bytes(header_buf[4..8].try_into().unwrap());
+                    let data_len = (width * height * 3) as usize;
 
-        let element = match gst::parse::launch(&pipeline_str) {
-            Ok(e) => e,
-            Err(e) => {
-                log::error!("Failed to create pipeline: {}", e);
-                return false;
-            }
-        };
-
-        let pipeline = element.dynamic_cast::<gst::Pipeline>().unwrap();
-
-        // Monitor bus for errors
-        let bus = pipeline.bus().unwrap();
-        let _bus_watch = bus
-            .add_watch(move |_, msg| {
-                use gst::MessageView;
-                match msg.view() {
-                    MessageView::Error(err) => {
-                        log::error!(
-                            "GStreamer error from {:?}: {} ({})",
-                            err.src().map(|s| s.path_string()),
-                            err.error(),
-                            err.debug().unwrap_or_default()
-                        );
+                    let mut data = vec![0u8; data_len];
+                    if reader.read_exact(&mut data).await.is_err() {
+                        log::warn!("Video socket: failed to read frame data");
+                        break;
                     }
-                    MessageView::Warning(warn) => {
-                        log::warn!(
-                            "GStreamer warning from {:?}: {} ({})",
-                            warn.src().map(|s| s.path_string()),
-                            warn.error(),
-                            warn.debug().unwrap_or_default()
-                        );
+
+                    if let Ok(mut state) = shared.lock() {
+                        *state = Some(VideoFrame { data, width, height });
                     }
-                    MessageView::Eos(_) => {
-                        log::info!("GStreamer EOS");
-                    }
-                    MessageView::StateChanged(state) => {
-                        log::debug!(
-                            "GStreamer state: {:?} -> {:?}",
-                            state.old(),
-                            state.current()
-                        );
-                    }
-                    _ => {}
+                } else {
+                    let e = result.unwrap_err();
+                    log::warn!("Video socket disconnected: {}", e);
+                    break;
                 }
-                gst::glib::ControlFlow::Continue
-            })
-            .ok();
-
-        let appsink = pipeline.by_name("sink").unwrap().downcast::<AppSink>().unwrap();
-
-        let frame = self.frame.clone();
-        appsink.set_callbacks(
-            gst_app::AppSinkCallbacks::builder()
-                .new_sample(move |appsink| {
-                    let sample = appsink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
-                    let buffer = sample.buffer().ok_or(gst::FlowError::Error)?;
-                    let caps = sample.caps().ok_or(gst::FlowError::Error)?;
-                    let info = gst_video::VideoInfo::from_caps(caps).map_err(|_| gst::FlowError::Error)?;
-
-                    let map = buffer.map_readable().map_err(|_| gst::FlowError::Error)?;
-                    let data = map.to_vec();
-
-                    if let Ok(mut f) = frame.lock() {
-                        *f = Some(VideoFrame {
-                            data,
-                            width: info.width(),
-                            height: info.height(),
-                        });
-                    }
-
-                    Ok(gst::FlowSuccess::Ok)
-                })
-                .build(),
-        );
-
-        if pipeline.set_state(gst::State::Playing).is_err() {
-            log::error!("Failed to set pipeline to Playing");
-            return false;
-        }
-
-        self.pipeline = Some(pipeline);
-        log::info!("Video stream started from {}", sdp_path);
-        true
-    }
-
-    pub fn get_frame(&self) -> Option<VideoFrame> {
-        self.frame.lock().ok()?.take()
-    }
-}
-
-#[cfg(feature = "video")]
-impl Drop for VideoStream {
-    fn drop(&mut self) {
-        if let Some(pipeline) = &self.pipeline {
-            let _ = pipeline.set_state(gst::State::Null);
+            }
+            _ = shutdown.changed() => {
+                log::info!("Video client shutdown signal received.");
+                return;
+            }
         }
     }
-}
-
-#[cfg(not(feature = "video"))]
-pub struct VideoStream;
-
-#[cfg(not(feature = "video"))]
-impl VideoStream {
-    pub fn new() -> Self { Self }
-    pub fn start(&mut self, _sdp_path: &str) -> bool {
-        log::warn!("Video feature not enabled");
-        false
-    }
-    pub fn get_frame(&self) -> Option<()> { None }
 }

@@ -231,6 +231,40 @@ pub fn parse_laser_packet(data: &[u8]) -> Option<LaserObservation> {
 }
 ```
 
+## 视频帧传输 (Unix Domain Socket)
+
+视频帧通过 Unix Domain Socket 传输，零编解码，零外部依赖。
+
+- **路径**: `/tmp/laser_frame`
+- **传输方式**: Stream (SOCK_STREAM)
+- **格式**: BGR8 (OpenCV `cv::Mat` 原生格式)
+
+### 帧格式
+
+```
+┌────────────┬────────────┬──────────────────┐
+│ width      │ height     │ BGR data         │
+│ 4B LE u32  │ 4B LE u32  │ w×h×3 bytes      │
+└────────────┴────────────┴──────────────────┘
+```
+
+### 示例：C++ 发送
+
+```cpp
+// 写入一帧
+uint32_t w = frame.cols, h = frame.rows;
+write(fd, &w, 4);
+write(fd, &h, 4);
+write(fd, frame.data, w * h * 3);
+```
+
+### 性能
+
+- 无编码/解码开销
+- 内核内单次拷贝
+- 延迟 < 1ms
+- 带宽 ~ 360 MB/s @ 1920×1080×60fps
+
 ## 测试验证
 
 发送测试包：
