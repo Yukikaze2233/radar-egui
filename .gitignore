@@ -3,3 +3,8 @@
 .dart_tool/
 .idea/
 *.iml
+android/
+ios/
+linux/
+macos/
+build/
