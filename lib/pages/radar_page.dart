@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../models/robo_master_info.dart';
 import '../models/laser_observation.dart';
 import '../services/tcp_client.dart';
@@ -83,31 +84,37 @@ class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMix
   
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    
     return Scaffold(
+      // M3E: 更现代的 AppBar
       appBar: AppBar(
-        title: Text('Radar HUD'),
+        title: Text(
+          'Radar HUD',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.5,
+          ),
+        ),
+        // M3E: 更美观的 TabBar
         bottom: TabBar(
           controller: _tabController,
+          indicatorSize: TabBarIndicatorSize.label,
+          indicatorWeight: 3,
           tabs: [
             Tab(text: 'Radar', icon: Icon(Icons.radar)),
             Tab(text: 'Laser', icon: Icon(Icons.lens)),
           ],
         ),
         actions: [
+          // M3E: 更美观的连接状态
           Center(
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  Icon(Icons.circle, size: 12, color: _radarConnected ? Colors.green : Colors.red),
-                  SizedBox(width: 8),
-                  Text(_radarConnected ? 'Radar' : 'Off', style: TextStyle(color: _radarConnected ? Colors.green : Colors.red)),
-                  SizedBox(width: 16),
-                  Icon(Icons.circle, size: 12, color: _laserConnected ? Colors.green : Colors.red),
-                  SizedBox(width: 8),
-                  Text(_laserConnected ? 'Laser' : 'Off', style: TextStyle(color: _laserConnected ? Colors.green : Colors.red)),
+                  _buildStatusIndicator('Radar', _radarConnected),
+                  SizedBox(width: 12),
+                  _buildStatusIndicator('Laser', _laserConnected),
                 ],
               ),
             ),
@@ -117,32 +124,109 @@ class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMix
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Radar 标签页
+          // Radar 标签页 - M3E: 更宽松的布局
           Row(
             children: [
-              Expanded(flex: 2, child: Padding(padding: EdgeInsets.all(12), child: MinimapWidget(info: _radarInfo))),
-              Expanded(flex: 3, child: StatusPanels(info: _radarInfo)),
+              Expanded(
+                flex: 2,
+                child: Padding(
+                  padding: EdgeInsets.all(16),  // M3E: 更大的边距
+                  child: MinimapWidget(info: _radarInfo),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: StatusPanels(info: _radarInfo),
+              ),
             ],
           ),
           // Laser 标签页
           LaserPanel(info: _laserInfo),
         ],
       ),
+      // M3E: 更美观的底部状态栏
       bottomNavigationBar: Container(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: colorScheme.surfaceVariant,
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceContainer,
+          border: Border(
+            top: BorderSide(
+              color: AppTheme.surfaceContainerHighest,
+              width: 1,
+            ),
+          ),
+        ),
         child: Row(
           children: [
-            Text('运行时间: ${_uptime.inHours}h ${_uptime.inMinutes % 60}m ${_uptime.inSeconds % 60}s', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
-            SizedBox(width: 16),
-            Text('数据: $_radarDataCount', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
-            SizedBox(width: 16),
-            Text('目标: 127.0.0.1:2000', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
+            _buildStatusItem('运行时间', '${_uptime.inHours}h ${_uptime.inMinutes % 60}m ${_uptime.inSeconds % 60}s'),
+            SizedBox(width: 24),
+            _buildStatusItem('数据', '$_radarDataCount'),
+            SizedBox(width: 24),
+            _buildStatusItem('目标', '127.0.0.1:2000'),
             Spacer(),
-            Text('Laser UDP: 0.0.0.0:5001', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
+            _buildStatusItem('Laser', 'UDP:5001'),
           ],
         ),
       ),
+    );
+  }
+  
+  // M3E: 状态指示器组件
+  Widget _buildStatusIndicator(String label, bool isConnected) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isConnected 
+            ? AppTheme.engineerColor.withOpacity(0.2)
+            : AppTheme.heroColor.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.circle,
+            size: 8,
+            color: isConnected ? AppTheme.engineerColor : AppTheme.heroColor,
+          ),
+          SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: isConnected ? AppTheme.engineerColor : AppTheme.heroColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // M3E: 状态项组件
+  Widget _buildStatusItem(String label, String value) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: AppTheme.surfaceContainerHighest,
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            color: AppTheme.onPrimaryContainer,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

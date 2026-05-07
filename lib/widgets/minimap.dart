@@ -10,12 +10,11 @@ class MinimapWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: CustomPaint(
-          painter: MinimapPainter(info: info),
-          size: Size.infinite,
-        ),
+      color: AppTheme.surfaceContainer,
+      clipBehavior: Clip.antiAlias,
+      child: CustomPaint(
+        painter: MinimapPainter(info: info),
+        size: Size.infinite,
       ),
     );
   }
@@ -31,11 +30,16 @@ class MinimapPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final scale = size.width * 0.45 / 3000.0;
     
-    // 背景
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Color(0xFF1E1E2E));
+    // M3E: 更深的背景
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Paint()..color = AppTheme.surfaceDim,
+    );
     
-    // 网格
-    final gridPaint = Paint()..color = Color(0xFF313244)..strokeWidth = 0.5;
+    // M3E: 更细腻的网格
+    final gridPaint = Paint()
+      ..color = AppTheme.surfaceContainerHighest.withOpacity(0.5)
+      ..strokeWidth = 0.5;
     for (int i = 0; i <= 10; i++) {
       final t = i / 10.0;
       final x = size.width * t;
@@ -44,8 +48,10 @@ class MinimapPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
     
-    // 十字准星
-    final crosshairPaint = Paint()..color = Color(0xFF45475A)..strokeWidth = 0.5;
+    // M3E: 更明显的十字准星
+    final crosshairPaint = Paint()
+      ..color = AppTheme.surfaceContainerHighest
+      ..strokeWidth = 1.0;
     canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), crosshairPaint);
     canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), crosshairPaint);
     
@@ -75,14 +81,38 @@ class MinimapPainter extends CustomPainter {
         center.dy - pos[1] * scale,
       );
       
-      canvas.drawCircle(screenPos, 7, Paint()..color = color);
+      // M3E: 更大、更有表现力的机器人点
+      // 发光效果
+      canvas.drawCircle(
+        screenPos,
+        12,
+        Paint()
+          ..color = color.withOpacity(0.3)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4),
+      );
+      // 主体
+      canvas.drawCircle(screenPos, 8, Paint()..color = color);
+      // 高光
+      canvas.drawCircle(
+        screenPos - Offset(2, 2),
+        3,
+        Paint()..color = Colors.white.withOpacity(0.3),
+      );
       
+      // M3E: 更清晰的标签
       final textPainter = TextPainter(
-        text: TextSpan(text: name, style: TextStyle(color: Color(0xFFA6ADC8), fontSize: 14)),
+        text: TextSpan(
+          text: name,
+          style: TextStyle(
+            color: AppTheme.onPrimaryContainer,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         textDirection: TextDirection.ltr,
       );
       textPainter.layout();
-      textPainter.paint(canvas, screenPos + Offset(14, -10));
+      textPainter.paint(canvas, screenPos + Offset(16, -12));
     }
   }
   
