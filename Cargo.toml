@@ -11,13 +11,9 @@ tokio = { version = "1", features = ["full"] }
 log = "0.4"
 env_logger = "0.11"
 rerun = { version = "0.22", optional = true }
-gst = { package = "gstreamer", version = "0.23", optional = true }
-gst-app = { package = "gstreamer-app", version = "0.23", optional = true }
-gst-video = { package = "gstreamer-video", version = "0.23", optional = true }
 
 [features]
 rerun = ["dep:rerun"]
-video = ["dep:gst", "dep:gst-app", "dep:gst-video"]
 
 [profile.release]
 opt-level = 2

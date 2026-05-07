@@ -9,7 +9,8 @@ use crate::rerun_viz::RerunVisualizer;
 use crate::tcp_client;
 use crate::theme;
 use crate::udp_client;
-use crate::video_stream::VideoStream;
+use crate::video_stream;
+use crate::video_stream::VideoFrame;
 use crate::widgets::{LaserPanel, MinimapWidget, StatusPanels};
 
 static FONT_ONCE: Once = Once::new();
@@ -37,8 +38,8 @@ pub struct RadarApp {
     laser_shared: Arc<Mutex<LaserObservation>>,
     laser_shutdown_tx: watch::Sender<bool>,
     laser_port: String,
-    video_shared: Arc<Mutex<VideoStream>>,
-    video_started: bool,
+    video_shared: Arc<Mutex<Option<VideoFrame>>>,
+    video_shutdown_tx: watch::Sender<bool>,
 }
 
 #[derive(PartialEq)]
@@ -73,7 +74,8 @@ impl Default for RadarApp {
             });
         });
 
-        let video_shared = Arc::new(Mutex::new(VideoStream::new()));
+        let video_shared: Arc<Mutex<Option<VideoFrame>>> = Arc::new(Mutex::new(None));
+        let (video_shutdown_tx, _video_shutdown_rx) = watch::channel(false);
 
         Self {
             active_tab: ActiveTab::Radar,
@@ -91,7 +93,7 @@ impl Default for RadarApp {
             laser_shutdown_tx,
             laser_port: laser_port.to_string(),
             video_shared,
-            video_started: false,
+            video_shutdown_tx,
         }
     }
 }
@@ -129,6 +131,26 @@ impl RadarApp {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             rt.block_on(async move {
                 udp_client::run_laser_client(port, laser_shared, laser_shutdown_rx).await;
+            });
+        });
+    }
+
+    fn ensure_video_started(&mut self) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static STARTED: AtomicBool = AtomicBool::new(false);
+        if STARTED.swap(true, Ordering::Relaxed) {
+            return;
+        }
+
+        let _ = self.video_shutdown_tx.send(true);
+        let (tx, rx) = watch::channel(false);
+        self.video_shutdown_tx = tx;
+
+        let shared = self.video_shared.clone();
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+            rt.block_on(async move {
+                video_stream::run_video_client("/tmp/laser_frame", shared, rx).await;
             });
         });
     }
@@ -315,11 +337,7 @@ impl eframe::App for RadarApp {
                     });
             }
             ActiveTab::Laser => {
-                if !self.video_started {
-                    if let Ok(mut video) = self.video_shared.lock() {
-                        self.video_started = video.start("/tmp/laser_guidance.sdp");
-                    }
-                }
+                self.ensure_video_started();
 
                 egui::CentralPanel::default()
                     .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
@@ -331,7 +349,7 @@ impl eframe::App for RadarApp {
             }
         }
 
-        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
 }
 
