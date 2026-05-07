@@ -3,14 +3,26 @@ use std::thread;
 
 use tokio::sync::watch;
 
+use crate::laser_protocol::LaserObservation;
 use crate::protocol::RoboMasterSignalInfo;
+use crate::rerun_viz::RerunVisualizer;
 use crate::tcp_client;
 use crate::theme;
-use crate::widgets::{MinimapWidget, StatusPanels};
+use crate::udp_client;
+use crate::video_stream::VideoStream;
+use crate::widgets::{LaserPanel, MinimapWidget, StatusPanels};
 
 static FONT_ONCE: Once = Once::new();
 
+#[derive(PartialEq, Clone, Copy)]
+enum ActiveTab {
+    Radar,
+    Laser,
+}
+
 pub struct RadarApp {
+    active_tab: ActiveTab,
+
     shared: Arc<Mutex<RoboMasterSignalInfo>>,
     connection_status: ConnectionStatus,
     last_update: Option<std::time::Instant>,
@@ -20,6 +32,13 @@ pub struct RadarApp {
     error_message: Option<String>,
     data_count: u64,
     start_time: std::time::Instant,
+    rerun_viz: RerunVisualizer,
+
+    laser_shared: Arc<Mutex<LaserObservation>>,
+    laser_shutdown_tx: watch::Sender<bool>,
+    laser_port: String,
+    video_shared: Arc<Mutex<VideoStream>>,
+    video_started: bool,
 }
 
 #[derive(PartialEq)]
@@ -38,16 +57,26 @@ impl Default for RadarApp {
         thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             rt.block_on(async move {
-                tcp_client::run_signal_client(
-                    &addr,
-                    shared_clone,
-                    shutdown_rx,
-                )
-                .await;
+                tcp_client::run_signal_client(&addr, shared_clone, shutdown_rx).await;
             });
         });
 
+        let laser_shared = Arc::new(Mutex::new(LaserObservation::default()));
+        let (laser_shutdown_tx, laser_shutdown_rx) = watch::channel(false);
+        let laser_shared_clone = laser_shared.clone();
+        let laser_port = 5001;
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+            rt.block_on(async move {
+                udp_client::run_laser_client(laser_port, laser_shared_clone, laser_shutdown_rx)
+                    .await;
+            });
+        });
+
+        let video_shared = Arc::new(Mutex::new(VideoStream::new()));
+
         Self {
+            active_tab: ActiveTab::Radar,
             shared,
             connection_status: ConnectionStatus::Disconnected,
             last_update: None,
@@ -57,36 +86,49 @@ impl Default for RadarApp {
             error_message: None,
             data_count: 0,
             start_time: std::time::Instant::now(),
+            rerun_viz: RerunVisualizer::new(),
+            laser_shared,
+            laser_shutdown_tx,
+            laser_port: laser_port.to_string(),
+            video_shared,
+            video_started: false,
         }
     }
 }
 
 impl RadarApp {
     fn reconnect(&mut self) {
-        // Send shutdown signal to current client
         let _ = self.shutdown_tx.send(true);
 
-        // Create new shutdown channel
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         self.shutdown_tx = shutdown_tx;
 
-        // Reset state
         self.connection_status = ConnectionStatus::Disconnected;
         self.last_update = None;
         self.error_message = None;
 
-        // Start new client thread
         let shared = self.shared.clone();
         let addr = format!("{}:{}", self.ip, self.port);
         thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             rt.block_on(async move {
-                tcp_client::run_signal_client(
-                    &addr,
-                    shared,
-                    shutdown_rx,
-                )
-                .await;
+                tcp_client::run_signal_client(&addr, shared, shutdown_rx).await;
+            });
+        });
+    }
+
+    fn reconnect_laser(&mut self) {
+        let _ = self.laser_shutdown_tx.send(true);
+
+        let (laser_shutdown_tx, laser_shutdown_rx) = watch::channel(false);
+        self.laser_shutdown_tx = laser_shutdown_tx;
+
+        let laser_shared = self.laser_shared.clone();
+        let port: u16 = self.laser_port.parse().unwrap_or(5001);
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+            rt.block_on(async move {
+                udp_client::run_laser_client(port, laser_shared, laser_shutdown_rx).await;
             });
         });
     }
@@ -98,78 +140,196 @@ impl eframe::App for RadarApp {
         self.update_connection_status();
         self.apply_theme(ctx);
 
-        // Top bar with connection status and settings
         egui::TopBottomPanel::top("top_bar")
-            .frame(egui::Frame::new().fill(theme::MANTLE).inner_margin(egui::Margin::symmetric(16, 10)))
+            .frame(
+                egui::Frame::new()
+                    .fill(theme::MANTLE)
+                    .inner_margin(egui::Margin::symmetric(16, 10)),
+            )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("radar hud").color(theme::SUBTEXT0).size(16.0));
-                    ui.separator();
-                    
-                    // Connection status
-                    match self.connection_status {
-                        ConnectionStatus::Connected => ui.colored_label(theme::CONNECTED, "● Connected"),
-                        ConnectionStatus::Disconnected => ui.colored_label(theme::DISCONNECTED, "● Disconnected"),
-                    };
-                    
-                    ui.separator();
-                    
-                    // Connection settings
-                    ui.label(egui::RichText::new("IP:").color(theme::SUBTEXT0).size(14.0));
-                    ui.add(egui::TextEdit::singleline(&mut self.ip).desired_width(120.0));
-                    ui.label(egui::RichText::new("Port:").color(theme::SUBTEXT0).size(14.0));
-                    ui.add(egui::TextEdit::singleline(&mut self.port).desired_width(60.0));
-                    
-                    if ui.button("Connect").clicked() {
-                        self.reconnect();
+                    let radar_selected = self.active_tab == ActiveTab::Radar;
+                    let laser_selected = self.active_tab == ActiveTab::Laser;
+
+                    if ui
+                        .selectable_label(radar_selected, egui::RichText::new("radar hud").size(16.0))
+                        .clicked()
+                    {
+                        self.active_tab = ActiveTab::Radar;
                     }
-                    
+                    if ui
+                        .selectable_label(laser_selected, egui::RichText::new("laser hud").size(16.0))
+                        .clicked()
+                    {
+                        self.active_tab = ActiveTab::Laser;
+                    }
+
+                    ui.separator();
+
+                    match self.active_tab {
+                        ActiveTab::Radar => {
+                            match self.connection_status {
+                                ConnectionStatus::Connected => {
+                                    ui.colored_label(theme::CONNECTED, "● Connected")
+                                }
+                                ConnectionStatus::Disconnected => {
+                                    ui.colored_label(theme::DISCONNECTED, "● Disconnected")
+                                }
+                            };
+
+                            ui.separator();
+
+                            ui.label(
+                                egui::RichText::new("IP:")
+                                    .color(theme::SUBTEXT0)
+                                    .size(14.0),
+                            );
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.ip).desired_width(120.0),
+                            );
+                            ui.label(
+                                egui::RichText::new("Port:")
+                                    .color(theme::SUBTEXT0)
+                                    .size(14.0),
+                            );
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.port).desired_width(60.0),
+                            );
+
+                            if ui.button("Connect").clicked() {
+                                self.reconnect();
+                            }
+                        }
+                        ActiveTab::Laser => {
+                            let laser_online = self
+                                .laser_shared
+                                .lock()
+                                .is_ok_and(|obs| obs.is_online());
+
+                            if laser_online {
+                                ui.colored_label(theme::CONNECTED, "● Laser Online");
+                            } else {
+                                ui.colored_label(theme::DISCONNECTED, "● Laser Offline");
+                            }
+
+                            ui.separator();
+
+                            ui.label(
+                                egui::RichText::new("Port:")
+                                    .color(theme::SUBTEXT0)
+                                    .size(14.0),
+                            );
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.laser_port).desired_width(60.0),
+                            );
+
+                            if ui.button("Connect").clicked() {
+                                self.reconnect_laser();
+                            }
+                        }
+                    }
+
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if let Some(last) = self.last_update {
                             let elapsed = last.elapsed().as_secs_f32();
-                            ui.label(egui::RichText::new(format!("{:.1}s", elapsed)).color(theme::OVERLAY0).size(14.0));
+                            ui.label(
+                                egui::RichText::new(format!("{:.1}s", elapsed))
+                                    .color(theme::OVERLAY0)
+                                    .size(14.0),
+                            );
                         }
                     });
                 });
             });
 
-        // Bottom status bar
         egui::TopBottomPanel::bottom("status_bar")
-            .frame(egui::Frame::new().fill(theme::MANTLE).inner_margin(egui::Margin::symmetric(16, 8)))
+            .frame(
+                egui::Frame::new()
+                    .fill(theme::MANTLE)
+                    .inner_margin(egui::Margin::symmetric(16, 8)),
+            )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     let uptime = self.start_time.elapsed().as_secs();
-                    ui.label(egui::RichText::new(format!("Uptime: {}s", uptime)).color(theme::SUBTEXT0).size(12.0));
-                    ui.separator();
-                    ui.label(egui::RichText::new(format!("Data: {}", self.data_count)).color(theme::SUBTEXT0).size(12.0));
-                    ui.separator();
-                    ui.label(egui::RichText::new(format!("Target: {}:{}", self.ip, self.port)).color(theme::SUBTEXT0).size(12.0));
-                    
-                    // Error message
+                    ui.label(
+                        egui::RichText::new(format!("Uptime: {}s", uptime))
+                            .color(theme::SUBTEXT0)
+                            .size(12.0),
+                    );
+
+                    match self.active_tab {
+                        ActiveTab::Radar => {
+                            ui.separator();
+                            ui.label(
+                                egui::RichText::new(format!("Data: {}", self.data_count))
+                                    .color(theme::SUBTEXT0)
+                                    .size(12.0),
+                            );
+                            ui.separator();
+                            ui.label(
+                                egui::RichText::new(format!("Target: {}:{}", self.ip, self.port))
+                                    .color(theme::SUBTEXT0)
+                                    .size(12.0),
+                            );
+                        }
+                        ActiveTab::Laser => {
+                            ui.separator();
+                            ui.label(
+                                egui::RichText::new(format!("Laser UDP: 0.0.0.0:{}", self.laser_port))
+                                    .color(theme::SUBTEXT0)
+                                    .size(12.0),
+                            );
+                        }
+                    }
+
                     if let Some(err) = &self.error_message {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(egui::RichText::new(format!("⚠ {}", err)).color(theme::RED).size(12.0));
-                        });
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("⚠ {}", err))
+                                        .color(theme::RED)
+                                        .size(12.0),
+                                );
+                            },
+                        );
                     }
                 });
             });
 
-        // Left panel: minimap
-        egui::SidePanel::left("minimap_panel")
-            .default_width(420.0)
-            .frame(egui::Frame::new().fill(theme::BASE).inner_margin(12))
-            .show(ctx, |ui| {
-                MinimapWidget::new(self.shared.clone()).show(ui);
-            });
+        match self.active_tab {
+            ActiveTab::Radar => {
+                egui::SidePanel::left("minimap_panel")
+                    .default_width(420.0)
+                    .frame(egui::Frame::new().fill(theme::BASE).inner_margin(12))
+                    .show(ctx, |ui| {
+                        MinimapWidget::new(self.shared.clone()).show(ui);
+                    });
 
-        // Central panel: status panels
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    StatusPanels::new(self.shared.clone()).show(ui);
-                });
-            });
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
+                    .show(ctx, |ui| {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            StatusPanels::new(self.shared.clone()).show(ui);
+                        });
+                    });
+            }
+            ActiveTab::Laser => {
+                if !self.video_started {
+                    if let Ok(mut video) = self.video_shared.lock() {
+                        self.video_started = video.start("/tmp/laser_guidance.sdp");
+                    }
+                }
+
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
+                    .show(ctx, |ui| {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            LaserPanel::new(self.laser_shared.clone(), self.video_shared.clone()).show(ui);
+                        });
+                    });
+            }
+        }
 
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
@@ -180,32 +340,58 @@ impl RadarApp {
         FONT_ONCE.call_once(|| {
             let mut fonts = egui::FontDefinitions::default();
 
-            // English primary: JetBrainsMono Nerd Font Propo (proportional, with icons)
-            if let Ok(data) = std::fs::read("/usr/share/fonts/TTF/JetBrainsMonoNerdFontPropo-Regular.ttf") {
+            if let Ok(data) =
+                std::fs::read("/usr/share/fonts/TTF/JetBrainsMonoNerdFontPropo-Regular.ttf")
+            {
                 log::info!("Loaded JetBrainsMono NFP (proportional English)");
-                fonts.font_data.insert("jb_propo".to_owned(), egui::FontData::from_owned(data).into());
-                fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, "jb_propo".to_owned());
+                fonts.font_data.insert(
+                    "jb_propo".to_owned(),
+                    egui::FontData::from_owned(data).into(),
+                );
+                fonts
+                    .families
+                    .entry(egui::FontFamily::Proportional)
+                    .or_default()
+                    .insert(0, "jb_propo".to_owned());
             }
 
-            // CJK fallback: LXGW WenKai GB Screen
             if let Ok(data) = std::fs::read("/usr/share/fonts/TTF/LXGWWenKaiGBScreen.ttf") {
                 log::info!("Loaded LXGW WenKai GB Screen (CJK fallback)");
-                fonts.font_data.insert("lxgw".to_owned(), egui::FontData::from_owned(data).into());
-                fonts.families.entry(egui::FontFamily::Proportional).or_default().push("lxgw".to_owned());
+                fonts.font_data.insert(
+                    "lxgw".to_owned(),
+                    egui::FontData::from_owned(data).into(),
+                );
+                fonts
+                    .families
+                    .entry(egui::FontFamily::Proportional)
+                    .or_default()
+                    .push("lxgw".to_owned());
             }
 
-            // Monospace: JetBrains Mono (numbers, code)
             if let Ok(data) = std::fs::read("/usr/share/fonts/TTF/JetBrainsMono-Regular.ttf") {
                 log::info!("Loaded JetBrains Mono (monospace)");
-                fonts.font_data.insert("jb_mono".to_owned(), egui::FontData::from_owned(data).into());
-                fonts.families.entry(egui::FontFamily::Monospace).or_default().insert(0, "jb_mono".to_owned());
+                fonts.font_data.insert(
+                    "jb_mono".to_owned(),
+                    egui::FontData::from_owned(data).into(),
+                );
+                fonts
+                    .families
+                    .entry(egui::FontFamily::Monospace)
+                    .or_default()
+                    .insert(0, "jb_mono".to_owned());
             }
 
-            // Monospace CJK fallback: LXGW WenKai Mono
             if let Ok(data) = std::fs::read("/usr/share/fonts/TTF/LXGWWenKaiMonoGBScreen.ttf") {
                 log::info!("Loaded LXGW WenKai Mono GB Screen (mono CJK fallback)");
-                fonts.font_data.insert("lxgw_mono".to_owned(), egui::FontData::from_owned(data).into());
-                fonts.families.entry(egui::FontFamily::Monospace).or_default().push("lxgw_mono".to_owned());
+                fonts.font_data.insert(
+                    "lxgw_mono".to_owned(),
+                    egui::FontData::from_owned(data).into(),
+                );
+                fonts
+                    .families
+                    .entry(egui::FontFamily::Monospace)
+                    .or_default()
+                    .push("lxgw_mono".to_owned());
             }
 
             ctx.set_fonts(fonts);
@@ -234,15 +420,15 @@ impl RadarApp {
 
     fn update_connection_status(&mut self) {
         if let Ok(info) = self.shared.lock() {
-            let is_default = info.hero_position == [0, 0]
-                && info.hero_blood == 0
-                && info.hero_ammunition == 0;
+            let is_default =
+                info.hero_position == [0, 0] && info.hero_blood == 0 && info.hero_ammunition == 0;
 
             if !is_default {
                 self.connection_status = ConnectionStatus::Connected;
                 self.last_update = Some(std::time::Instant::now());
                 self.data_count += 1;
                 self.error_message = None;
+                self.rerun_viz.log_all(&info);
             } else if let Some(last) = self.last_update {
                 if last.elapsed().as_secs() > 5 {
                     self.connection_status = ConnectionStatus::Disconnected;

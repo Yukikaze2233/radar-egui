@@ -1,7 +1,11 @@
 mod app;
+mod laser_protocol;
 mod protocol;
+mod rerun_viz;
 mod tcp_client;
 mod theme;
+mod udp_client;
+mod video_stream;
 mod widgets;
 
 fn main() -> eframe::Result {
