@@ -2,7 +2,7 @@
 
 use egui::Color32;
 
-// Catppuccin Mocha palette — base layers
+// Catppuccin Mocha palette
 pub const CRUST: Color32 = Color32::from_rgb(0x11, 0x11, 0x1b);
 pub const MANTLE: Color32 = Color32::from_rgb(0x18, 0x18, 0x25);
 pub const BASE: Color32 = Color32::from_rgb(0x1e, 0x1e, 0x2e);
@@ -13,20 +13,6 @@ pub const OVERLAY0: Color32 = Color32::from_rgb(0x6c, 0x70, 0x86);
 pub const SUBTEXT0: Color32 = Color32::from_rgb(0xa6, 0xad, 0xc8);
 pub const TEXT: Color32 = Color32::from_rgb(0xcd, 0xd6, 0xf4);
 
-// ── M3-style surface hierarchy (between BASE and SURFACE0) ──
-pub const SURFACE_LOW: Color32 = Color32::from_rgb(0x24, 0x24, 0x38);
-pub const SURFACE_HIGH: Color32 = Color32::from_rgb(0x2c, 0x2c, 0x42);
-
-// ── Card design tokens ──
-pub const CARD_BG: Color32 = SURFACE_LOW;
-pub const CARD_BORDER: Color32 = Color32::from_rgb(0x3a, 0x3a, 0x50);
-pub const CARD_RADIUS: u8 = 12;
-
-// ── Subtle elements ──
-pub const GRID_LINE: Color32 = Color32::from_rgb(0x28, 0x28, 0x3c);
-pub const GRID_BG: Color32 = Color32::from_rgb(0x1a, 0x1a, 0x2a);
-
-// ── Accent colors ──
 pub const BLUE: Color32 = Color32::from_rgb(0x89, 0xb4, 0xfa);
 pub const GREEN: Color32 = Color32::from_rgb(0xa6, 0xe3, 0xa1);
 pub const RED: Color32 = Color32::from_rgb(0xf3, 0x8b, 0xa8);
@@ -51,12 +37,3 @@ pub const BLOOD_LOW: Color32 = RED;
 
 pub const CONNECTED: Color32 = GREEN;
 pub const DISCONNECTED: Color32 = RED;
-
-/// Lighten a color for a progress-bar highlight stripe.
-pub fn lighten(c: Color32, amount: u8) -> Color32 {
-    Color32::from_rgb(
-        c.r().saturating_add(amount),
-        c.g().saturating_add(amount),
-        c.b().saturating_add(amount),
-    )
-}

@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 use crate::laser_protocol::LaserObservation;
 use crate::theme;
 use crate::video_stream::VideoFrame;
-use crate::widgets;
 
 pub struct LaserPanel {
     shared: Arc<Mutex<LaserObservation>>,
@@ -24,84 +23,76 @@ impl LaserPanel {
 
         let online = obs.is_online();
 
-        widgets::card_frame(ui, |ui| {
-            self.section_header(ui, "连接状态");
-            if online {
-                ui.label(RichText::new("● 在线").color(theme::GREEN).size(18.0));
-            } else {
-                ui.label(RichText::new("● 离线").color(theme::RED).size(18.0));
-            }
-        });
+        self.section_header(ui, "连接状态");
+        if online {
+            ui.label(RichText::new("● 在线").color(theme::GREEN).size(18.0));
+        } else {
+            ui.label(RichText::new("● 离线").color(theme::RED).size(18.0));
+        }
 
-        ui.add_space(14.0);
+        ui.add_space(16.0);
 
-        widgets::card_frame(ui, |ui| {
-            self.section_header(ui, "视频流");
-            self.draw_video_with_overlay(ui, &obs);
-        });
+        self.section_header(ui, "视频流");
+        self.draw_video_with_overlay(ui, &obs);
 
-        ui.add_space(14.0);
+        ui.add_space(16.0);
 
-        widgets::card_frame(ui, |ui| {
-            self.section_header(ui, "目标检测");
-            if obs.detected {
-                ui.label(RichText::new("已检测到目标").color(theme::GREEN).size(16.0));
-                ui.add_space(8.0);
-                egui::Grid::new("target_grid").num_columns(2).spacing([24.0, 8.0]).show(ui, |ui| {
-                    ui.label(RichText::new("中心 X").color(theme::SUBTEXT0).size(14.0));
-                    ui.label(RichText::new(format!("{:.1}", obs.center[0])).color(theme::TEXT).size(16.0));
+        self.section_header(ui, "目标检测");
+        if obs.detected {
+            ui.label(RichText::new("已检测到目标").color(theme::GREEN).size(16.0));
+            ui.add_space(8.0);
+            egui::Grid::new("target_grid").num_columns(2).spacing([24.0, 8.0]).show(ui, |ui| {
+                ui.label(RichText::new("中心 X").color(theme::SUBTEXT0).size(14.0));
+                ui.label(RichText::new(format!("{:.1}", obs.center[0])).color(theme::TEXT).size(16.0));
+                ui.end_row();
+                ui.label(RichText::new("中心 Y").color(theme::SUBTEXT0).size(14.0));
+                ui.label(RichText::new(format!("{:.1}", obs.center[1])).color(theme::TEXT).size(16.0));
+                ui.end_row();
+                ui.label(RichText::new("亮度").color(theme::SUBTEXT0).size(14.0));
+                ui.label(RichText::new(format!("{:.2}", obs.brightness)).color(theme::TEXT).size(16.0));
+                ui.end_row();
+                ui.label(RichText::new("轮廓点数").color(theme::SUBTEXT0).size(14.0));
+                ui.label(RichText::new(format!("{}", obs.contour.len())).color(theme::TEXT).size(16.0));
+                ui.end_row();
+            });
+        } else {
+            ui.label(RichText::new("未检测到目标").color(theme::OVERLAY0).size(16.0));
+        }
+
+        ui.add_space(16.0);
+
+        self.section_header(ui, "模型候选");
+        if obs.candidates.is_empty() {
+            ui.label(RichText::new("无候选").color(theme::OVERLAY0).size(16.0));
+        } else {
+            egui::Grid::new("candidates_grid").num_columns(5).spacing([16.0, 8.0]).show(ui, |ui| {
+                ui.label(RichText::new("类别").color(theme::SUBTEXT0).size(14.0));
+                ui.label(RichText::new("置信度").color(theme::SUBTEXT0).size(14.0));
+                ui.label(RichText::new("中心 X").color(theme::SUBTEXT0).size(14.0));
+                ui.label(RichText::new("中心 Y").color(theme::SUBTEXT0).size(14.0));
+                ui.label(RichText::new("边界框").color(theme::SUBTEXT0).size(14.0));
+                ui.end_row();
+                for cand in &obs.candidates {
+                    let class_color = match cand.class_id {
+                        0 => theme::MAUVE, 1 => theme::RED, 2 => theme::BLUE, _ => theme::OVERLAY0,
+                    };
+                    ui.label(RichText::new(LaserObservation::class_name(cand.class_id)).color(class_color).size(14.0));
+                    ui.label(RichText::new(format!("{:.0}%", cand.score * 100.0)).color(theme::TEXT).size(14.0));
+                    ui.label(RichText::new(format!("{:.1}", cand.center[0])).color(theme::TEXT).size(14.0));
+                    ui.label(RichText::new(format!("{:.1}", cand.center[1])).color(theme::TEXT).size(14.0));
+                    ui.label(RichText::new(format!("{:.0}x{:.0}", cand.bbox[2], cand.bbox[3])).color(theme::TEXT).size(14.0));
                     ui.end_row();
-                    ui.label(RichText::new("中心 Y").color(theme::SUBTEXT0).size(14.0));
-                    ui.label(RichText::new(format!("{:.1}", obs.center[1])).color(theme::TEXT).size(16.0));
-                    ui.end_row();
-                    ui.label(RichText::new("置信度").color(theme::SUBTEXT0).size(14.0));
-                    ui.label(RichText::new(format!("{:.2}", obs.brightness)).color(theme::TEXT).size(16.0));
-                    ui.end_row();
-                    ui.label(RichText::new("轮廓点数").color(theme::SUBTEXT0).size(14.0));
-                    ui.label(RichText::new(format!("{}", obs.contour.len())).color(theme::TEXT).size(16.0));
-                    ui.end_row();
-                });
-            } else {
-                ui.label(RichText::new("未检测到目标").color(theme::OVERLAY0).size(16.0));
-            }
-        });
-
-        ui.add_space(14.0);
-
-        widgets::card_frame(ui, |ui| {
-            self.section_header(ui, "模型候选");
-            if obs.candidates.is_empty() {
-                ui.label(RichText::new("无候选").color(theme::OVERLAY0).size(16.0));
-            } else {
-                egui::Grid::new("candidates_grid").num_columns(5).spacing([16.0, 8.0]).show(ui, |ui| {
-                    ui.label(RichText::new("类别").color(theme::SUBTEXT0).size(14.0));
-                    ui.label(RichText::new("置信度").color(theme::SUBTEXT0).size(14.0));
-                    ui.label(RichText::new("中心 X").color(theme::SUBTEXT0).size(14.0));
-                    ui.label(RichText::new("中心 Y").color(theme::SUBTEXT0).size(14.0));
-                    ui.label(RichText::new("边界框").color(theme::SUBTEXT0).size(14.0));
-                    ui.end_row();
-                    for cand in &obs.candidates {
-                        let class_color = match cand.class_id {
-                            0 => theme::MAUVE, 1 => theme::RED, 2 => theme::BLUE, _ => theme::OVERLAY0,
-                        };
-                        ui.label(RichText::new(LaserObservation::class_name(cand.class_id)).color(class_color).size(14.0));
-                        ui.label(RichText::new(format!("{:.0}%", cand.score * 100.0)).color(theme::TEXT).size(14.0));
-                        ui.label(RichText::new(format!("{:.1}", cand.center[0])).color(theme::TEXT).size(14.0));
-                        ui.label(RichText::new(format!("{:.1}", cand.center[1])).color(theme::TEXT).size(14.0));
-                        ui.label(RichText::new(format!("{:.0}x{:.0}", cand.bbox[2], cand.bbox[3])).color(theme::TEXT).size(14.0));
-                        ui.end_row();
-                    }
-                });
-            }
-        });
+                }
+            });
+        }
     }
 
     fn section_header(&self, ui: &mut egui::Ui, title: &str) {
-        ui.label(RichText::new(title).color(theme::TEXT).size(16.0));
-        ui.add_space(2.0);
+        ui.label(RichText::new(title).color(theme::TEXT).size(18.0));
+        ui.add_space(3.0);
         let rect = ui.available_rect_before_wrap();
-        let line_y = ui.cursor().top() + 2.0;
-        ui.painter().line_segment([Pos2::new(rect.left(), line_y), Pos2::new(rect.right(), line_y)], (0.5, theme::CARD_BORDER));
+        let line_y = ui.cursor().top() + 3.0;
+        ui.painter().line_segment([Pos2::new(rect.left(), line_y), Pos2::new(rect.right(), line_y)], (0.5, theme::SURFACE1));
         ui.add_space(10.0);
     }
 }
@@ -112,7 +103,7 @@ impl LaserPanel {
         let size = Vec2::new(available.x, available.x * 9.0 / 16.0);
         let (response, painter) = ui.allocate_painter(size, egui::Sense::hover());
         let rect = response.rect;
-        painter.rect_filled(rect, 6, theme::GRID_BG);
+        painter.rect_filled(rect, 4.0, theme::CRUST);
 
         let (scale_x, scale_y) = if let Ok(mut video) = self.video.lock() {
             if let Some(frame) = video.take() {

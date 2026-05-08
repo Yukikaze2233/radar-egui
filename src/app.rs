@@ -11,7 +11,7 @@ use crate::theme;
 use crate::udp_client;
 use crate::video_stream;
 use crate::video_stream::VideoFrame;
-use crate::widgets::{self, LaserPanel, MinimapWidget, StatusPanels};
+use crate::widgets::{LaserPanel, MinimapWidget, StatusPanels};
 
 static FONT_ONCE: Once = Once::new();
 
@@ -150,7 +150,8 @@ impl RadarApp {
         thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             rt.block_on(async move {
-                video_stream::run_video_client("/laser_frame", shared, rx).await;
+                video_stream::run_video_client("127.0.0.1", 5004, 1920, 1080, shared, rx)
+                    .await;
             });
         });
     }
@@ -166,23 +167,27 @@ impl eframe::App for RadarApp {
             .frame(
                 egui::Frame::new()
                     .fill(theme::MANTLE)
-                    .inner_margin(egui::Margin::symmetric(16, 8)),
+                    .inner_margin(egui::Margin::symmetric(16, 10)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(4.0, 0.0);
+                    let radar_selected = self.active_tab == ActiveTab::Radar;
+                    let laser_selected = self.active_tab == ActiveTab::Laser;
 
-                    let radar_sel = self.active_tab == ActiveTab::Radar;
-                    let laser_sel = self.active_tab == ActiveTab::Laser;
-
-                    if pill_tab(ui, radar_sel, "Radar HUD").clicked() {
+                    if ui
+                        .selectable_label(radar_selected, egui::RichText::new("radar hud").size(16.0))
+                        .clicked()
+                    {
                         self.active_tab = ActiveTab::Radar;
                     }
-                    if pill_tab(ui, laser_sel, "Laser HUD").clicked() {
+                    if ui
+                        .selectable_label(laser_selected, egui::RichText::new("laser hud").size(16.0))
+                        .clicked()
+                    {
                         self.active_tab = ActiveTab::Laser;
                     }
 
-                    ui.add_space(16.0);
+                    ui.separator();
 
                     match self.active_tab {
                         ActiveTab::Radar => {
@@ -195,12 +200,12 @@ impl eframe::App for RadarApp {
                                 }
                             };
 
-                            ui.add_space(8.0);
+                            ui.separator();
 
                             ui.label(
                                 egui::RichText::new("IP:")
                                     .color(theme::SUBTEXT0)
-                                    .size(13.0),
+                                    .size(14.0),
                             );
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.ip).desired_width(120.0),
@@ -208,11 +213,12 @@ impl eframe::App for RadarApp {
                             ui.label(
                                 egui::RichText::new("Port:")
                                     .color(theme::SUBTEXT0)
-                                    .size(13.0),
+                                    .size(14.0),
                             );
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.port).desired_width(60.0),
                             );
+
                             if ui.button("Connect").clicked() {
                                 self.reconnect();
                             }
@@ -229,16 +235,17 @@ impl eframe::App for RadarApp {
                                 ui.colored_label(theme::DISCONNECTED, "● Laser Offline");
                             }
 
-                            ui.add_space(8.0);
+                            ui.separator();
 
                             ui.label(
                                 egui::RichText::new("Port:")
                                     .color(theme::SUBTEXT0)
-                                    .size(13.0),
+                                    .size(14.0),
                             );
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.laser_port).desired_width(60.0),
                             );
+
                             if ui.button("Connect").clicked() {
                                 self.reconnect_laser();
                             }
@@ -251,7 +258,7 @@ impl eframe::App for RadarApp {
                             ui.label(
                                 egui::RichText::new(format!("{:.1}s", elapsed))
                                     .color(theme::OVERLAY0)
-                                    .size(13.0),
+                                    .size(14.0),
                             );
                         }
                     });
@@ -262,7 +269,7 @@ impl eframe::App for RadarApp {
             .frame(
                 egui::Frame::new()
                     .fill(theme::MANTLE)
-                    .inner_margin(egui::Margin::symmetric(16, 6)),
+                    .inner_margin(egui::Margin::symmetric(16, 8)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
@@ -317,23 +324,13 @@ impl eframe::App for RadarApp {
             ActiveTab::Radar => {
                 egui::SidePanel::left("minimap_panel")
                     .default_width(420.0)
-                    .frame(
-                        egui::Frame::new()
-                            .fill(theme::BASE)
-                            .inner_margin(egui::Margin::symmetric(12, 12)),
-                    )
+                    .frame(egui::Frame::new().fill(theme::BASE).inner_margin(12))
                     .show(ctx, |ui| {
-                        widgets::card_frame(ui, |ui| {
-                            MinimapWidget::new(self.shared.clone()).show(ui);
-                        });
+                        MinimapWidget::new(self.shared.clone()).show(ui);
                     });
 
                 egui::CentralPanel::default()
-                    .frame(
-                        egui::Frame::new()
-                            .fill(theme::BASE)
-                            .inner_margin(egui::Margin::symmetric(12, 12)),
-                    )
+                    .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
                     .show(ctx, |ui| {
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             StatusPanels::new(self.shared.clone()).show(ui);
@@ -344,15 +341,10 @@ impl eframe::App for RadarApp {
                 self.ensure_video_started();
 
                 egui::CentralPanel::default()
-                    .frame(
-                        egui::Frame::new()
-                            .fill(theme::BASE)
-                            .inner_margin(egui::Margin::symmetric(12, 12)),
-                    )
+                    .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
                     .show(ctx, |ui| {
                         egui::ScrollArea::vertical().show(ui, |ui| {
-                            LaserPanel::new(self.laser_shared.clone(), self.video_shared.clone())
-                                .show(ui);
+                            LaserPanel::new(self.laser_shared.clone(), self.video_shared.clone()).show(ui);
                         });
                     });
             }
@@ -360,47 +352,6 @@ impl eframe::App for RadarApp {
 
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
-}
-
-fn pill_tab(ui: &mut egui::Ui, selected: bool, label: &str) -> egui::Response {
-    let font_id = egui::FontId::proportional(14.0);
-    let text_width = label.len() as f32 * 8.5;
-    let padding = egui::vec2(18.0, 6.0);
-    let desired = egui::vec2(text_width + padding.x * 2.0, 30.0);
-
-    let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click());
-
-    if ui.is_rect_visible(rect) {
-        let rounding = egui::CornerRadius::same(18);
-        if selected {
-            ui.painter().rect_filled(rect, rounding, theme::BLUE);
-            ui.painter().circle_filled(
-                rect.left_center() + egui::vec2(12.0, 0.0),
-                3.0,
-                theme::SURFACE_LOW,
-            );
-            ui.painter().text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                label,
-                font_id,
-                theme::CRUST,
-            );
-        } else {
-            if response.hovered() {
-                ui.painter()
-                    .rect_filled(rect, rounding, theme::SURFACE_HIGH);
-            }
-            ui.painter().text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                label,
-                font_id,
-                theme::SUBTEXT0,
-            );
-        }
-    }
-    response
 }
 
 impl RadarApp {
@@ -469,12 +420,12 @@ impl RadarApp {
     fn apply_theme(&self, ctx: &egui::Context) {
         let mut v = egui::Visuals::dark();
         v.override_text_color = Some(theme::TEXT);
-        v.widgets.inactive.bg_fill = theme::SURFACE_LOW;
+        v.widgets.inactive.bg_fill = theme::SURFACE0;
         v.widgets.inactive.bg_stroke = egui::Stroke::NONE;
-        v.widgets.inactive.weak_bg_fill = theme::SURFACE_LOW;
+        v.widgets.inactive.weak_bg_fill = theme::SURFACE0;
         v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, theme::SUBTEXT0);
-        v.widgets.hovered.bg_fill = theme::SURFACE_HIGH;
-        v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, theme::CARD_BORDER);
+        v.widgets.hovered.bg_fill = theme::SURFACE1;
+        v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, theme::SURFACE2);
         v.widgets.active.bg_fill = theme::SURFACE2;
         v.widgets.active.bg_stroke = egui::Stroke::new(1.0, theme::OVERLAY0);
         v.selection.bg_fill = theme::SURFACE2;
