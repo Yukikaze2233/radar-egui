@@ -1,6 +1,6 @@
 [package]
 name = "radar-egui"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Real-time radar HUD for RoboMaster competition"
 
