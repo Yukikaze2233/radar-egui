@@ -136,13 +136,24 @@ impl RadarApp {
     }
 
     fn send_laser_command(&self, cmd: &str) {
-        use std::io::Write;
-        if let Ok(mut fifo) = std::fs::OpenOptions::new().write(true).open("/tmp/laser_cmd") {
-            let _ = writeln!(fifo, "{cmd}");
-            log::info!("Sent laser command: {}", cmd);
-        } else {
-            log::warn!("Failed to send laser command (FIFO /tmp/laser_cmd not available)");
-        }
+        let cmd = cmd.to_owned();
+        std::thread::spawn(move || {
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true);
+            // O_NONBLOCK for FIFO — don't hang if nobody is reading
+            opts.custom_flags(libc::O_NONBLOCK);
+            match opts.open("/tmp/laser_cmd") {
+                Ok(mut fifo) => {
+                    let _ = writeln!(fifo, "{cmd}");
+                    log::info!("Sent laser command: {}", cmd);
+                }
+                Err(e) => {
+                    log::warn!("Failed to send laser command: {}", e);
+                }
+            }
+        });
     }
 
     fn ensure_video_started(&mut self) {
