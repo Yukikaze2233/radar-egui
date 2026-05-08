@@ -150,7 +150,7 @@ impl RadarApp {
         thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             rt.block_on(async move {
-                video_stream::run_video_client("/tmp/laser_frame", shared, rx).await;
+                video_stream::run_video_client(shared, rx).await;
             });
         });
     }
