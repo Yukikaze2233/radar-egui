@@ -46,6 +46,7 @@ impl LaserObservation {
     }
 
     /// 获取最佳候选（score 最高的）
+    #[allow(dead_code)]
     pub fn best_candidate(&self) -> Option<&ModelCandidate> {
         self.candidates
             .iter()

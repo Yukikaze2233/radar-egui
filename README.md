@@ -1,110 +1,110 @@
 # radar-egui
 
-基于 Rust + egui 的 RoboMaster 比赛实时雷达 HUD。
+Real-time RoboMaster competition HUD built in Rust with egui.
 
-## 简介
+## Overview
 
-radar-egui 通过 TCP 连接 SDR 数据流，解析 RoboMaster 比赛状态数据包，实时显示战场信息，包括机器人位置、血量、弹药、经济和增益状态。
+radar-egui connects to the SDR data stream via TCP, parses RoboMaster game state packets, and displays real-time battlefield information including robot positions, blood levels, ammunition, economy, and gain status.
 
-## 环境要求
+## Prerequisites
 
-- Rust 工具链 (1.75+)
-- Linux (X11 或 Wayland)
-- SDR 数据源运行在 `127.0.0.1:2000`
+- Rust toolchain (1.75+)
+- Linux (X11 or Wayland)
+- SDR data source running on `127.0.0.1:2000`
 
-## 构建与运行
+## Build and Run
 
 ```bash
-# 构建
+# Build
 cargo build --release
 
-# 运行
+# Run
 cargo run --release
 
-# 带日志运行
+# Run with logging
 RUST_LOG=info cargo run --release
 ```
 
-## 截图
+## UI Layout
 
-### Radar HUD
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Radar HUD                              ● Connected         │
+├───────────────────────┬─────────────────────────────────────┤
+│                       │  Blood                              │
+│                       │  ┌──────────────────────────────┐   │
+│    Battlefield Map    │  │ Hero      ████████░░  160/200│   │
+│                       │  │ Engineer  ██████████  200/200│   │
+│    ·Hero              │  │ Infantry1 ████░░░░░░   80/200│   │
+│    ·Engineer          │  │ Infantry2 ███████░░░  140/200│   │
+│    ·Infantry1         │  │ Saven     ██████████  200/200│   │
+│    ·Infantry2         │  │ Sentinel  ██████████  400/400│   │
+│    ·Drone             │  └──────────────────────────────┘   │
+│    ·Sentinel          │                                     │
+│                       │  Ammunition                         │
+│                       │  ┌──────────────────────────────┐   │
+│                       │  │ Hero       85                 │   │
+│                       │  │ Infantry1  100                │   │
+│                       │  │ Infantry2  92                 │   │
+│                       │  │ Drone      78                 │   │
+│                       │  │ Sentinel   65                 │   │
+│                       │  └──────────────────────────────┘   │
+│                       │                                     │
+│                       │  Economy                            │
+│                       │  ┌──────────────────────────────┐   │
+│                       │  │ Remain: 1200 / Total: 1500   │   │
+│                       │  │ ████████░░ 80%               │   │
+│                       │  └──────────────────────────────┘   │
+│                       │                                     │
+│                       │  Gains                              │
+│                       │  ┌──────────────────────────────┐   │
+│                       │  │ Robot  Regen Cool Def NegD Atk│   │
+│                       │  │ Hero    2    10   5   3   8  │   │
+│                       │  │ ...                          │   │
+│                       │  └──────────────────────────────┘   │
+└───────────────────────┴─────────────────────────────────────┘
+```
 
-![Radar HUD](docs/radar-hud.png)
+## Data Source
 
-### Laser HUD
+radar-egui consumes data from `alliance_radar_sdr` via TCP:
 
-![Laser HUD](docs/laser-hud.png)
+| Port | Direction | Data |
+|------|-----------|------|
+| `127.0.0.1:2000` | Receive | RoboMaster_Signal_Info (102 bytes) |
 
-## UI 布局
+### Packet Structure
 
-顶部标签页切换 Radar / Laser 两种 HUD 视图。
+| cmd_id | Name | Fields | Bytes |
+|--------|------|--------|-------|
+| 0x0A01 | Positions | 6 robots × [i16, i16] | 26 |
+| 0x0A02 | Blood | 6 robots × u16 | 14 |
+| 0x0A03 | Ammunition | 5 robots × u16 | 12 |
+| 0x0A04 | Economy | remain(u16) + total(u16) + status(6B) | 12 |
+| 0x0A05 | Gains | 5 robots × [1+2+1+1+2] + posture(1) | 38 |
 
-## 数据源
+Byte order: big-endian for most fields, little-endian for 2-byte gain sub-fields.
 
-radar-egui 从 `alliance_radar_sdr` 通过 TCP 接收数据：
-
-| 端口 | 方向 | 数据 |
-|------|------|------|
-| `127.0.0.1:2000` | 接收 | RoboMaster_Signal_Info (102 字节) |
-
-### 数据包结构
-
-| cmd_id | 名称 | 字段 | 字节数 |
-|--------|------|------|--------|
-| 0x0A01 | 位置 | 6 机器人 × [i16, i16] | 26 |
-| 0x0A02 | 血量 | 6 机器人 × u16 | 14 |
-| 0x0A03 | 弹药 | 5 机器人 × u16 | 12 |
-| 0x0A04 | 经济 | 剩余(u16) + 总计(u16) + 状态(6B) | 12 |
-| 0x0A05 | 增益 | 5 机器人 × [1+2+1+1+2] + 姿态(1) | 38 |
-
-字节序：大部分字段大端序，增益子字段中 2 字节部分为小端序。
-
-## 可用接口
-
-| 端口 | 方向 | 数据 | 状态 |
-|------|------|------|------|
-| `127.0.0.1:2000` | 接收 | 信号流 (102 bytes) | ✅ 已对接 |
-| `127.0.0.1:3000` | 接收 | 噪声流 (7 bytes) | ❌ 未对接 |
-| `192.168.1.10:2000` | 接收 | 数据中心标记 (12 bytes) | ❌ 未对接 |
-| `192.168.1.10:3000` | 发送 | 位置+噪声数据 | ❌ 未对接 |
-
-## 模块结构
+## Module Structure
 
 ```
 src/
-├── main.rs           # 入口，egui 窗口初始化
-├── protocol.rs       # RoboMasterSignalInfo 结构体 + 二进制解析器
-├── tcp_client.rs     # 异步 TCP 客户端，自动重连
-├── rerun_viz.rs      # Rerun 3D 可视化集成
-├── app.rs            # egui 应用，布局和交互
-├── theme.rs          # Catppuccin Mocha 配色
+├── main.rs           # Entry point, egui window setup
+├── protocol.rs       # RoboMasterSignalInfo struct + binary parser
+├── tcp_client.rs     # Async TCP client with auto-reconnect
+├── app.rs            # egui application with 4-panel layout
 └── widgets/
-    ├── mod.rs        # 重导出
-    ├── minimap.rs    # 2D 战场小地图 (Painter)
-    └── panels.rs     # 血量/弹药/经济/增益面板
+    ├── mod.rs        # Re-exports
+    ├── minimap.rs    # 2D battlefield minimap (Painter)
+    └── panels.rs     # Blood/ammo/economy/gain panels
 ```
 
-## 依赖
+## Dependencies
 
-- `eframe` / `egui` — 即时模式 GUI
-- `tokio` — 异步 TCP 客户端
-- `log` / `env_logger` — 日志
-- `rerun` — 3D 可视化（可选）
+- `eframe` / `egui` — immediate mode GUI
+- `tokio` — async TCP client
+- `log` / `env_logger` — logging
 
-## 构建与运行
-
-```bash
-# 基础版本
-cargo build --release
-cargo run --release
-
-# 带 Rerun 3D 可视化
-cargo run --features rerun
-
-# 带日志
-RUST_LOG=info cargo run --release
-```
-
-## 许可证
+## License
 
 MIT
