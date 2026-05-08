@@ -44,7 +44,9 @@ impl ShmHeader {
         val
     }
     fn write_idx(&self) -> u32 {
-        unsafe { std::ptr::read_volatile(self.ptr.add(20) as *const u32) }
+        let val = unsafe { std::ptr::read_volatile(self.ptr.add(20) as *const u32) };
+        std::sync::atomic::fence(std::sync::atomic::Ordering::Acquire);
+        val
     }
 }
 
@@ -182,7 +184,7 @@ pub async fn run_video_client(
             }
 
             let write_idx = header.write_idx();
-            let read_idx = 1 - write_idx;
+            let read_idx = write_idx;
             let buf_offset = HEADER_SIZE + (read_idx as usize) * frame_size;
 
             let frame_data = unsafe {

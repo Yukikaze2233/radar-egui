@@ -105,8 +105,8 @@ impl LaserPanel {
         let rect = response.rect;
         painter.rect_filled(rect, 4.0, theme::CRUST);
 
-        let (scale_x, scale_y) = if let Ok(mut video) = self.video.lock() {
-            if let Some(frame) = video.take() {
+        let (scale_x, scale_y) = if let Ok(video) = self.video.lock() {
+            if let Some(frame) = video.as_ref() {
                 let sx = rect.width() / frame.width as f32;
                 let sy = rect.height() / frame.height as f32;
                 let rgba = bgr_to_rgba(&frame.data, frame.width as usize, frame.height as usize);

@@ -231,39 +231,48 @@ pub fn parse_laser_packet(data: &[u8]) -> Option<LaserObservation> {
 }
 ```
 
-## 视频帧传输 (Unix Domain Socket)
+## 视频帧传输 (POSIX 共享内存)
 
-视频帧通过 Unix Domain Socket 传输，零编解码，零外部依赖。
+视频帧通过 POSIX 共享内存传输，零拷贝，零编解码。
 
-- **路径**: `/tmp/laser_frame`
-- **传输方式**: Stream (SOCK_STREAM)
-- **格式**: BGR8 (OpenCV `cv::Mat` 原生格式)
+- **路径**: `/laser_frame` (`/dev/shm/laser_frame`)
+- **方式**: `shm_open` + `mmap` (MAP_SHARED, PROT_READ)
+- **格式**: BGR8 连续存储，stride = width × 3，无行对齐 padding
 
-### 帧格式
+### 内存布局
 
 ```
-┌────────────┬────────────┬──────────────────┐
-│ width      │ height     │ BGR data         │
-│ 4B LE u32  │ 4B LE u32  │ w×h×3 bytes      │
-└────────────┴────────────┴──────────────────┘
+┌─ ShmHeader (64 B) ──────────────────────────────────────────┐
+│ +0   u32 magic       = 0x4C465248 ("LFRH")                   │
+│ +4   u32 width                                               │
+│ +8   u32 height                                              │
+│ +12  u32 stride       = width × 3                            │
+│ +16  atomic<u32> frame_seq  (release 写入, acquire 读取)       │
+│ +20  atomic<u32> write_idx  (0 或 1, release 写入, acquire 读取)│
+│ +24  u8[40] _pad                                             │
+├──────────────────────────────────────────────────────────────┤
+│ buf_[0]  (height × stride bytes)                             │
+├──────────────────────────────────────────────────────────────┤
+│ buf_[1]  (height × stride bytes)                             │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### 示例：C++ 发送
+### Producer 协议
 
-```cpp
-// 写入一帧
-uint32_t w = frame.cols, h = frame.rows;
-write(fd, &w, 4);
-write(fd, &h, 4);
-write(fd, frame.data, w * h * 3);
+- 读取 `write_idx` (acquire) 确定活跃缓冲区
+- 写入 `buf_[1 - write_idx]`（非活跃缓冲区）
+- 写入完成后翻转 `write_idx` (release)，递增 `frame_seq` (release)
+
+### Consumer 协议
+
+```
+1. frame_seq == 0 ? → 无有效帧，等待
+2. seq = frame_seq.load(acquire), 若未变则等待
+3. idx = write_idx.load(acquire)
+4. 读取 buf_[idx]（活跃缓冲区，稳定完整）
 ```
 
-### 性能
-
-- 无编码/解码开销
-- 内核内单次拷贝
-- 延迟 < 1ms
-- 带宽 ~ 360 MB/s @ 1920×1080×60fps
+**关键约束**：Consumer 读 `buf_[write_idx]`，Producer 写 `buf_[1 - write_idx]`，互不冲突。
 
 ## 测试验证
 
