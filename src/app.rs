@@ -135,6 +135,16 @@ impl RadarApp {
         });
     }
 
+    fn send_laser_command(&self, cmd: &str) {
+        use std::io::Write;
+        if let Ok(mut fifo) = std::fs::OpenOptions::new().write(true).open("/tmp/laser_cmd") {
+            let _ = writeln!(fifo, "{cmd}");
+            log::info!("Sent laser command: {}", cmd);
+        } else {
+            log::warn!("Failed to send laser command (FIFO /tmp/laser_cmd not available)");
+        }
+    }
+
     fn ensure_video_started(&mut self) {
         use std::sync::atomic::{AtomicBool, Ordering};
         static STARTED: AtomicBool = AtomicBool::new(false);
@@ -247,6 +257,15 @@ impl eframe::App for RadarApp {
 
                             if ui.button("Connect").clicked() {
                                 self.reconnect_laser();
+                            }
+
+                            ui.separator();
+
+                            if ui.button("Stream On").clicked() {
+                                self.send_laser_command("stream on");
+                            }
+                            if ui.button("Stream Off").clicked() {
+                                self.send_laser_command("stream off");
                             }
                         }
                     }
