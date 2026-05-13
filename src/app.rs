@@ -156,12 +156,7 @@ impl RadarApp {
         let cmd = cmd.to_owned();
         std::thread::spawn(move || {
             use std::io::Write;
-            use std::os::unix::fs::OpenOptionsExt;
-            let mut opts = std::fs::OpenOptions::new();
-            opts.write(true);
-            // O_NONBLOCK for FIFO — don't hang if nobody is reading
-            opts.custom_flags(libc::O_NONBLOCK);
-            match opts.open("/tmp/laser_cmd") {
+            match std::fs::OpenOptions::new().write(true).open("/tmp/laser_cmd") {
                 Ok(mut fifo) => {
                     let _ = writeln!(fifo, "{cmd}");
                     log::info!("Sent laser command: {}", cmd);
