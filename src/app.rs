@@ -14,6 +14,9 @@ use crate::video_stream::VideoFrame;
 use crate::widgets::{LaserPanel, MinimapWidget, StatusPanels};
 
 static FONT_ONCE: Once = Once::new();
+const MINIMAP_BG_PATH: &str = "img_2026-05-14_13-35-15.png";
+const LOGO_PATH: &str = "logo.png";
+const MINIMAP_DEFAULT_PAN_Y: f32 = 18.0;
 
 #[derive(PartialEq, Clone, Copy)]
 enum ActiveTab {
@@ -23,6 +26,13 @@ enum ActiveTab {
 
 pub struct RadarApp {
     active_tab: ActiveTab,
+    dark_mode: bool,
+    minimap_texture: Option<egui::TextureHandle>,
+    minimap_texture_failed: bool,
+    minimap_pan: egui::Vec2,
+    minimap_zoom: f32,
+    logo_texture: Option<egui::TextureHandle>,
+    logo_texture_failed: bool,
 
     shared: Arc<Mutex<RoboMasterSignalInfo>>,
     connection_status: ConnectionStatus,
@@ -79,6 +89,13 @@ impl Default for RadarApp {
 
         Self {
             active_tab: ActiveTab::Radar,
+            dark_mode: false,
+            minimap_texture: None,
+            minimap_texture_failed: false,
+            minimap_pan: egui::vec2(0.0, MINIMAP_DEFAULT_PAN_Y),
+            minimap_zoom: 1.0,
+            logo_texture: None,
+            logo_texture_failed: false,
             shared,
             connection_status: ConnectionStatus::Disconnected,
             last_update: None,
@@ -180,200 +197,140 @@ impl RadarApp {
 impl eframe::App for RadarApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.setup_fonts(ctx);
+        theme::set_dark_mode(self.dark_mode);
+        self.ensure_minimap_texture(ctx);
+        self.ensure_logo_texture(ctx);
         self.update_connection_status();
         self.apply_theme(ctx);
 
-        egui::TopBottomPanel::top("top_bar")
-            .frame(
-                egui::Frame::new()
-                    .fill(theme::MANTLE)
-                    .inner_margin(egui::Margin::symmetric(16, 10)),
-            )
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    let radar_selected = self.active_tab == ActiveTab::Radar;
-                    let laser_selected = self.active_tab == ActiveTab::Laser;
-
-                    if ui
-                        .selectable_label(radar_selected, egui::RichText::new("radar hud").size(16.0))
-                        .clicked()
-                    {
-                        self.active_tab = ActiveTab::Radar;
-                    }
-                    if ui
-                        .selectable_label(laser_selected, egui::RichText::new("laser hud").size(16.0))
-                        .clicked()
-                    {
-                        self.active_tab = ActiveTab::Laser;
-                    }
-
-                    ui.separator();
-
-                    match self.active_tab {
-                        ActiveTab::Radar => {
-                            match self.connection_status {
-                                ConnectionStatus::Connected => {
-                                    ui.colored_label(theme::CONNECTED, "● Connected")
-                                }
-                                ConnectionStatus::Disconnected => {
-                                    ui.colored_label(theme::DISCONNECTED, "● Disconnected")
-                                }
-                            };
-
-                            ui.separator();
-
-                            ui.label(
-                                egui::RichText::new("IP:")
-                                    .color(theme::SUBTEXT0)
-                                    .size(14.0),
-                            );
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.ip).desired_width(120.0),
-                            );
-                            ui.label(
-                                egui::RichText::new("Port:")
-                                    .color(theme::SUBTEXT0)
-                                    .size(14.0),
-                            );
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.port).desired_width(60.0),
-                            );
-
-                            if ui.button("Connect").clicked() {
-                                self.reconnect();
-                            }
-                        }
-                        ActiveTab::Laser => {
-                            let laser_online = self
-                                .laser_shared
-                                .lock()
-                                .is_ok_and(|obs| obs.is_online());
-
-                            if laser_online {
-                                ui.colored_label(theme::CONNECTED, "● Laser Online");
-                            } else {
-                                ui.colored_label(theme::DISCONNECTED, "● Laser Offline");
-                            }
-
-                            ui.separator();
-
-                            ui.label(
-                                egui::RichText::new("Port:")
-                                    .color(theme::SUBTEXT0)
-                                    .size(14.0),
-                            );
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.laser_port).desired_width(60.0),
-                            );
-
-                            if ui.button("Connect").clicked() {
-                                self.reconnect_laser();
-                            }
-
-                            ui.separator();
-
-                            if ui.button("Stream On").clicked() {
-                                self.send_laser_command("stream on");
-                            }
-                            if ui.button("Stream Off").clicked() {
-                                self.send_laser_command("stream off");
-                            }
-                        }
-                    }
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if let Some(last) = self.last_update {
-                            let elapsed = last.elapsed().as_secs_f32();
-                            ui.label(
-                                egui::RichText::new(format!("{:.1}s", elapsed))
-                                    .color(theme::OVERLAY0)
-                                    .size(14.0),
-                            );
-                        }
-                    });
-                });
-            });
-
-        egui::TopBottomPanel::bottom("status_bar")
-            .frame(
-                egui::Frame::new()
-                    .fill(theme::MANTLE)
-                    .inner_margin(egui::Margin::symmetric(16, 8)),
-            )
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    let uptime = self.start_time.elapsed().as_secs();
-                    ui.label(
-                        egui::RichText::new(format!("Uptime: {}s", uptime))
-                            .color(theme::SUBTEXT0)
-                            .size(12.0),
-                    );
-
-                    match self.active_tab {
-                        ActiveTab::Radar => {
-                            ui.separator();
-                            ui.label(
-                                egui::RichText::new(format!("Data: {}", self.data_count))
-                                    .color(theme::SUBTEXT0)
-                                    .size(12.0),
-                            );
-                            ui.separator();
-                            ui.label(
-                                egui::RichText::new(format!("Target: {}:{}", self.ip, self.port))
-                                    .color(theme::SUBTEXT0)
-                                    .size(12.0),
-                            );
-                        }
-                        ActiveTab::Laser => {
-                            ui.separator();
-                            ui.label(
-                                egui::RichText::new(format!("Laser UDP: 0.0.0.0:{}", self.laser_port))
-                                    .color(theme::SUBTEXT0)
-                                    .size(12.0),
-                            );
-                        }
-                    }
-
-                    if let Some(err) = &self.error_message {
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                ui.label(
-                                    egui::RichText::new(format!("⚠ {}", err))
-                                        .color(theme::RED)
-                                        .size(12.0),
-                                );
-                            },
-                        );
-                    }
-                });
-            });
-
         match self.active_tab {
             ActiveTab::Radar => {
-                egui::SidePanel::left("minimap_panel")
-                    .default_width(420.0)
-                    .frame(egui::Frame::new().fill(theme::BASE).inner_margin(12))
+                egui::SidePanel::right("radar_inspector")
+                    .exact_width(356.0)
+                    .resizable(false)
+                    .show_separator_line(false)
+                    .frame(
+                        egui::Frame::new()
+                            .fill(theme::panel_bg())
+                            .inner_margin(egui::Margin::same(18)),
+                    )
                     .show(ctx, |ui| {
-                        MinimapWidget::new(self.shared.clone()).show(ui);
+                        self.show_radar_sidebar(ui);
                     });
 
                 egui::CentralPanel::default()
-                    .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
+                    .frame(
+                        egui::Frame::new()
+                            .fill(theme::app_bg())
+                            .inner_margin(egui::Margin::same(18)),
+                    )
                     .show(ctx, |ui| {
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            StatusPanels::new(self.shared.clone()).show(ui);
+                        ui.horizontal(|ui| {
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(58.0, ui.available_height()),
+                                egui::Layout::top_down(egui::Align::Center),
+                                |ui| {
+                                    self.show_mode_rail(ui);
+                                },
+                            );
+                            ui.add_space(12.0);
+                            ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("Radar Workspace")
+                                            .color(theme::text())
+                                            .size(21.0),
+                                    );
+                                    ui.add_space(12.0);
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "white battle board / live robot overlay",
+                                        )
+                                        .color(theme::text_muted())
+                                        .size(13.0),
+                                    );
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if ui.button("Reset View").clicked() {
+                                                self.minimap_pan =
+                                                    egui::vec2(0.0, MINIMAP_DEFAULT_PAN_Y);
+                                                self.minimap_zoom = 1.0;
+                                            }
+                                        },
+                                    );
+                                });
+                                ui.add_space(14.0);
+                                MinimapWidget::new(self.shared.clone()).show_with_state(
+                                    ui,
+                                    self.minimap_texture.as_ref(),
+                                    &mut self.minimap_pan,
+                                    &mut self.minimap_zoom,
+                                );
+                            });
                         });
                     });
             }
             ActiveTab::Laser => {
                 self.ensure_video_started();
 
-                egui::CentralPanel::default()
-                    .frame(egui::Frame::new().fill(theme::BASE).inner_margin(16))
+                egui::SidePanel::right("laser_inspector")
+                    .exact_width(356.0)
+                    .resizable(false)
+                    .show_separator_line(false)
+                    .frame(
+                        egui::Frame::new()
+                            .fill(theme::panel_bg())
+                            .inner_margin(egui::Margin::same(18)),
+                    )
                     .show(ctx, |ui| {
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            LaserPanel::new(self.laser_shared.clone(), self.video_shared.clone()).show(ui);
+                        self.show_laser_sidebar(ui);
+                    });
+
+                egui::CentralPanel::default()
+                    .frame(
+                        egui::Frame::new()
+                            .fill(theme::app_bg())
+                            .inner_margin(egui::Margin::same(18)),
+                    )
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(58.0, ui.available_height()),
+                                egui::Layout::top_down(egui::Align::Center),
+                                |ui| {
+                                    self.show_mode_rail(ui);
+                                },
+                            );
+                            ui.add_space(12.0);
+                            let content_width = ui.available_width();
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(content_width, ui.available_height()),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("Laser Workspace")
+                                                .color(theme::text())
+                                                .size(21.0),
+                                        );
+                                        ui.add_space(12.0);
+                                        ui.label(
+                                            egui::RichText::new(
+                                                "video feed / target overlay / live detections",
+                                            )
+                                            .color(theme::text_muted())
+                                            .size(13.0),
+                                        );
+                                    });
+                                    ui.add_space(14.0);
+                                    LaserPanel::new(
+                                        self.laser_shared.clone(),
+                                        self.video_shared.clone(),
+                                    )
+                                    .show_video_stage(ui);
+                                },
+                            );
                         });
                     });
             }
@@ -384,6 +341,340 @@ impl eframe::App for RadarApp {
 }
 
 impl RadarApp {
+    fn ensure_minimap_texture(&mut self, ctx: &egui::Context) {
+        if self.minimap_texture.is_some() || self.minimap_texture_failed {
+            return;
+        }
+
+        match image::open(MINIMAP_BG_PATH) {
+            Ok(image) => {
+                let rgba = image.to_rgba8();
+                let size = [rgba.width() as usize, rgba.height() as usize];
+                let pixels = rgba.into_raw();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
+                self.minimap_texture = Some(ctx.load_texture(
+                    "unity_minimap_bg",
+                    color_image,
+                    egui::TextureOptions::LINEAR,
+                ));
+                log::info!("Loaded minimap background from {}", MINIMAP_BG_PATH);
+            }
+            Err(err) => {
+                self.minimap_texture_failed = true;
+                log::warn!(
+                    "Failed to load minimap background from {}: {}",
+                    MINIMAP_BG_PATH,
+                    err
+                );
+            }
+        }
+    }
+
+    fn ensure_logo_texture(&mut self, ctx: &egui::Context) {
+        if self.logo_texture.is_some() || self.logo_texture_failed {
+            return;
+        }
+
+        match image::open(LOGO_PATH) {
+            Ok(image) => {
+                let rgba = image.to_rgba8();
+                let size = [rgba.width() as usize, rgba.height() as usize];
+                let pixels = rgba.into_raw();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
+                self.logo_texture =
+                    Some(ctx.load_texture("rail_logo", color_image, egui::TextureOptions::LINEAR));
+                log::info!("Loaded rail logo from {}", LOGO_PATH);
+            }
+            Err(err) => {
+                self.logo_texture_failed = true;
+                log::warn!("Failed to load rail logo from {}: {}", LOGO_PATH, err);
+            }
+        }
+    }
+
+    fn show_mode_rail(&mut self, ui: &mut egui::Ui) {
+        ui.vertical(|ui| {
+            ui.add_space(8.0);
+            ui.vertical_centered(|ui| {
+                if let Some(texture) = self.logo_texture.as_ref() {
+                    ui.add(
+                        egui::Image::from_texture(texture)
+                            .fit_to_exact_size(egui::vec2(34.0, 34.0))
+                            .corner_radius(egui::CornerRadius::same(255)),
+                    );
+                } else {
+                    let (logo_rect, _) =
+                        ui.allocate_exact_size(egui::vec2(34.0, 34.0), egui::Sense::hover());
+                    ui.painter()
+                        .circle_filled(logo_rect.center(), 17.0, theme::BLUE_SOFT);
+                    ui.painter().text(
+                        logo_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "R",
+                        egui::FontId::proportional(16.0),
+                        theme::BLUE,
+                    );
+                }
+
+                ui.add_space(8.0);
+                self.show_mode_button(ui, "◎", ActiveTab::Radar, "Radar");
+                ui.add_space(8.0);
+                self.show_mode_button(ui, "◈", ActiveTab::Laser, "Laser");
+            });
+
+            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new(format!("{} pkt", self.data_count))
+                    .color(theme::text_muted())
+                    .size(12.0),
+            );
+            ui.label(
+                egui::RichText::new(format!("{}s", self.start_time.elapsed().as_secs()))
+                    .color(theme::text_faint())
+                    .size(12.0),
+            );
+            ui.add_space(ui.available_height().max(0.0));
+            if ui.button(if self.dark_mode { "☼" } else { "☾" }).clicked() {
+                self.dark_mode = !self.dark_mode;
+            }
+            ui.add_space(8.0);
+        });
+    }
+
+    fn show_mode_button(&mut self, ui: &mut egui::Ui, title: &str, tab: ActiveTab, subtitle: &str) {
+        let selected = self.active_tab == tab;
+        let fill = if selected {
+            theme::BLUE
+        } else {
+            theme::card_bg()
+        };
+        let stroke = if selected {
+            egui::Stroke::NONE
+        } else {
+            egui::Stroke::new(1.0, theme::border())
+        };
+        let text_color = if selected {
+            theme::text_on_dark()
+        } else {
+            theme::text()
+        };
+        let sub_color = if selected {
+            theme::BLUE_SOFT
+        } else {
+            theme::text_faint()
+        };
+
+        let response = egui::Frame::new()
+            .fill(fill)
+            .stroke(stroke)
+            .corner_radius(egui::CornerRadius::same(14))
+            .inner_margin(egui::Margin::symmetric(8, 10))
+            .show(ui, |ui| {
+                ui.set_min_width(42.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(egui::RichText::new(title).color(text_color).size(18.0));
+                    ui.add_space(2.0);
+                    ui.label(egui::RichText::new(subtitle).color(sub_color).size(9.0));
+                });
+            })
+            .response
+            .interact(egui::Sense::click());
+
+        if response.clicked() {
+            self.active_tab = tab;
+        }
+    }
+
+    fn show_radar_sidebar(&mut self, ui: &mut egui::Ui) {
+        Self::white_card(ui, "连接", |ui| {
+            Self::status_chip(
+                ui,
+                self.connection_status == ConnectionStatus::Connected,
+                "Signal feed",
+            );
+            ui.add_space(12.0);
+            egui::Grid::new("radar_conn_grid")
+                .num_columns(2)
+                .min_col_width(78.0)
+                .spacing([12.0, 10.0])
+                .show(ui, |ui| {
+                    ui.label(
+                        egui::RichText::new("IP")
+                            .color(theme::text_muted())
+                            .size(13.0),
+                    );
+                    ui.add(egui::TextEdit::singleline(&mut self.ip).desired_width(f32::INFINITY));
+                    ui.end_row();
+                    ui.label(
+                        egui::RichText::new("Port")
+                            .color(theme::text_muted())
+                            .size(13.0),
+                    );
+                    ui.add(egui::TextEdit::singleline(&mut self.port).desired_width(f32::INFINITY));
+                    ui.end_row();
+                });
+            ui.add_space(12.0);
+            if ui
+                .add_sized(
+                    [ui.available_width(), 32.0],
+                    egui::Button::new("Reconnect radar stream"),
+                )
+                .clicked()
+            {
+                self.reconnect();
+            }
+            ui.add_space(8.0);
+            egui::Grid::new("radar_meta_grid")
+                .num_columns(2)
+                .min_col_width(78.0)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label(
+                        egui::RichText::new("Packets")
+                            .color(theme::text_faint())
+                            .size(12.0),
+                    );
+                    ui.label(
+                        egui::RichText::new(self.data_count.to_string())
+                            .color(theme::text())
+                            .size(12.0),
+                    );
+                    ui.end_row();
+                    ui.label(
+                        egui::RichText::new("Last live")
+                            .color(theme::text_faint())
+                            .size(12.0),
+                    );
+                    let age = self
+                        .last_update
+                        .map(|last| format!("{:.1}s", last.elapsed().as_secs_f32()))
+                        .unwrap_or_else(|| "--".to_string());
+                    ui.label(egui::RichText::new(age).color(theme::text()).size(12.0));
+                    ui.end_row();
+                });
+
+            if let Some(err) = &self.error_message {
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new(err).color(theme::RED).size(12.0));
+            }
+        });
+
+        ui.add_space(14.0);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                StatusPanels::new(self.shared.clone()).show(ui);
+            });
+    }
+
+    fn show_laser_sidebar(&mut self, ui: &mut egui::Ui) {
+        let laser_online = self.laser_shared.lock().is_ok_and(|obs| obs.is_online());
+
+        Self::white_card(ui, "数据源", |ui| {
+            Self::status_chip(ui, laser_online, "Laser UDP");
+            ui.add_space(12.0);
+            egui::Grid::new("laser_conn_grid")
+                .num_columns(2)
+                .min_col_width(78.0)
+                .spacing([12.0, 10.0])
+                .show(ui, |ui| {
+                    ui.label(
+                        egui::RichText::new("Port")
+                            .color(theme::text_muted())
+                            .size(13.0),
+                    );
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.laser_port)
+                            .desired_width(f32::INFINITY),
+                    );
+                    ui.end_row();
+                });
+            ui.add_space(12.0);
+            if ui
+                .add_sized(
+                    [ui.available_width(), 32.0],
+                    egui::Button::new("Reconnect laser listener"),
+                )
+                .clicked()
+            {
+                self.reconnect_laser();
+            }
+        });
+
+        ui.add_space(14.0);
+        Self::white_card(ui, "流控制", |ui| {
+            ui.columns(2, |columns| {
+                if columns[0]
+                    .add_sized(
+                        [columns[0].available_width(), 32.0],
+                        egui::Button::new("Stream on"),
+                    )
+                    .clicked()
+                {
+                    self.send_laser_command("stream on");
+                }
+                if columns[1]
+                    .add_sized(
+                        [columns[1].available_width(), 32.0],
+                        egui::Button::new("Stream off"),
+                    )
+                    .clicked()
+                {
+                    self.send_laser_command("stream off");
+                }
+            });
+        });
+
+        ui.add_space(14.0);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                LaserPanel::new(self.laser_shared.clone(), self.video_shared.clone())
+                    .show_analysis_sidebar(ui);
+            });
+    }
+
+    fn white_card(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
+        egui::Frame::new()
+            .fill(theme::card_bg())
+            .stroke(egui::Stroke::new(1.0, theme::border()))
+            .corner_radius(egui::CornerRadius::same(18))
+            .shadow(egui::epaint::Shadow {
+                offset: [0, 8],
+                blur: 24,
+                spread: 0,
+                color: theme::shadow(),
+            })
+            .inner_margin(egui::Margin::same(16))
+            .show(ui, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.label(egui::RichText::new(title).color(theme::text()).size(16.0));
+                });
+                ui.add_space(10.0);
+                add_contents(ui);
+            });
+    }
+
+    fn status_chip(ui: &mut egui::Ui, ok: bool, label: &str) {
+        let fill = if ok {
+            theme::success_bg()
+        } else {
+            theme::error_bg()
+        };
+        let text = if ok { theme::GREEN } else { theme::RED };
+        egui::Frame::new()
+            .fill(fill)
+            .corner_radius(egui::CornerRadius::same(255))
+            .inner_margin(egui::Margin::symmetric(10, 6))
+            .show(ui, |ui| {
+                ui.label(
+                    egui::RichText::new(format!("● {}", label))
+                        .color(text)
+                        .size(12.0),
+                );
+            });
+    }
+
     fn setup_fonts(&self, ctx: &egui::Context) {
         FONT_ONCE.call_once(|| {
             let mut fonts = egui::FontDefinitions::default();
@@ -405,10 +696,9 @@ impl RadarApp {
 
             if let Ok(data) = std::fs::read("/usr/share/fonts/TTF/LXGWWenKaiGBScreen.ttf") {
                 log::info!("Loaded LXGW WenKai GB Screen (CJK fallback)");
-                fonts.font_data.insert(
-                    "lxgw".to_owned(),
-                    egui::FontData::from_owned(data).into(),
-                );
+                fonts
+                    .font_data
+                    .insert("lxgw".to_owned(), egui::FontData::from_owned(data).into());
                 fonts
                     .families
                     .entry(egui::FontFamily::Proportional)
@@ -447,22 +737,28 @@ impl RadarApp {
     }
 
     fn apply_theme(&self, ctx: &egui::Context) {
-        let mut v = egui::Visuals::dark();
-        v.override_text_color = Some(theme::TEXT);
-        v.widgets.inactive.bg_fill = theme::SURFACE0;
-        v.widgets.inactive.bg_stroke = egui::Stroke::NONE;
-        v.widgets.inactive.weak_bg_fill = theme::SURFACE0;
-        v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, theme::SUBTEXT0);
-        v.widgets.hovered.bg_fill = theme::SURFACE1;
-        v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, theme::SURFACE2);
-        v.widgets.active.bg_fill = theme::SURFACE2;
-        v.widgets.active.bg_stroke = egui::Stroke::new(1.0, theme::OVERLAY0);
-        v.selection.bg_fill = theme::SURFACE2;
+        let mut v = if self.dark_mode {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        };
+        v.override_text_color = Some(theme::text());
+        v.widgets.inactive.bg_fill = theme::card_bg();
+        v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, theme::border());
+        v.widgets.inactive.weak_bg_fill = theme::card_bg_muted();
+        v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, theme::text_muted());
+        v.widgets.hovered.bg_fill = theme::card_bg_muted();
+        v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, theme::border_strong());
+        v.widgets.active.bg_fill = theme::BLUE_SOFT;
+        v.widgets.active.bg_stroke = egui::Stroke::new(1.0, theme::BLUE);
+        v.widgets.open.bg_fill = theme::card_bg();
+        v.widgets.open.bg_stroke = egui::Stroke::new(1.0, theme::border_strong());
+        v.selection.bg_fill = theme::BLUE_SOFT;
         v.selection.stroke = egui::Stroke::new(1.0, theme::BLUE);
-        v.extreme_bg_color = theme::CRUST;
-        v.faint_bg_color = theme::MANTLE;
-        v.window_fill = theme::BASE;
-        v.window_stroke = egui::Stroke::new(0.5, theme::SURFACE1);
+        v.extreme_bg_color = theme::card_bg();
+        v.faint_bg_color = theme::card_bg_muted();
+        v.window_fill = theme::panel_bg();
+        v.window_stroke = egui::Stroke::new(1.0, theme::border());
         ctx.set_visuals(v);
     }
 

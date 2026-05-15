@@ -59,10 +59,7 @@ impl RerunVisualizer {
 
             for (name, blood) in blood_data {
                 let entity_path = format!("world/stats/blood/{}", name);
-                let _ = rec.log(
-                    entity_path.as_str(),
-                    &rr::Scalar::new(blood as f64),
-                );
+                let _ = rec.log(entity_path.as_str(), &rr::Scalar::new(blood as f64));
             }
         }
     }
