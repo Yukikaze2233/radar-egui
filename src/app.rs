@@ -692,17 +692,18 @@ impl RadarApp {
                             } else if script.is_daemon() {
                                 let cmd = self.enemy_color.fifo_cmd().to_owned();
                                 std::thread::spawn(move || {
+                                    // 轮询写入直到 daemon 打开 FIFO 读端（最多 5s）
                                     for _ in 0..100 {
-                                        if std::path::Path::new("/tmp/laser_cmd")
-                                            .exists()
-                                        {
-                                            break;
+                                        if script_runner::send_fifo(&cmd).is_ok() {
+                                            return;
                                         }
                                         std::thread::sleep(std::time::Duration::from_millis(
                                             50,
                                         ));
                                     }
-                                    let _ = script_runner::send_fifo(&cmd);
+                                    log::warn!(
+                                        "Timed out sending enemy color command to daemon"
+                                    );
                                 });
                             }
                         }
