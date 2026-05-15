@@ -51,7 +51,11 @@ impl LaserObservation {
         self.candidates
             .iter()
             .filter(|c| c.score > 0.25)
-            .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| {
+                a.score
+                    .partial_cmp(&b.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     }
 
     /// 获取类别名称
@@ -195,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_parse_valid_no_data() {
-        let mut buf = vec![0u8; 32];
+        let mut buf = vec![0u8; 37];
         // magic
         buf[0] = 0x47;
         buf[1] = 0x4C;
