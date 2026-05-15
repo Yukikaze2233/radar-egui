@@ -51,7 +51,11 @@ impl LaserObservation {
         self.candidates
             .iter()
             .filter(|c| c.score > 0.25)
-            .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| {
+                a.score
+                    .partial_cmp(&b.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     }
 
     /// 获取类别名称

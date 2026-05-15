@@ -82,14 +82,20 @@ fn open_shm() -> Result<ShmMapping, String> {
         return Err(format!("mmap header: {}", std::io::Error::last_os_error()));
     }
 
-    let header = ShmHeader { ptr: header_ptr as *mut u8 };
+    let header = ShmHeader {
+        ptr: header_ptr as *mut u8,
+    };
 
     if header.magic() != SHM_MAGIC {
         unsafe {
             libc::munmap(header_ptr, HEADER_SIZE);
             libc::close(fd);
         }
-        return Err(format!("bad magic: 0x{:08X} (expected 0x{:08X})", header.magic(), SHM_MAGIC));
+        return Err(format!(
+            "bad magic: 0x{:08X} (expected 0x{:08X})",
+            header.magic(),
+            SHM_MAGIC
+        ));
     }
 
     let w = header.width();
@@ -144,7 +150,12 @@ pub async fn run_video_client(
         let mapping = match open_shm() {
             Ok(m) => {
                 let map_mb = m.map_len as f64 / (1024.0 * 1024.0);
-                log::info!("[shm] attached ({}x{}, {:.1} MB)", m.width, m.height, map_mb);
+                log::info!(
+                    "[shm] attached ({}x{}, {:.1} MB)",
+                    m.width,
+                    m.height,
+                    map_mb
+                );
                 m
             }
             Err(e) => {
@@ -187,9 +198,8 @@ pub async fn run_video_client(
             let read_idx = write_idx;
             let buf_offset = HEADER_SIZE + (read_idx as usize) * frame_size;
 
-            let frame_data = unsafe {
-                std::slice::from_raw_parts(mapping.ptr.add(buf_offset), frame_size)
-            };
+            let frame_data =
+                unsafe { std::slice::from_raw_parts(mapping.ptr.add(buf_offset), frame_size) };
 
             if let Ok(mut state) = shared.lock() {
                 match state.as_mut() {
