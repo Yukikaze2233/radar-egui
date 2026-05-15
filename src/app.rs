@@ -952,7 +952,7 @@ impl RadarApp {
         FONT_ONCE.call_once(|| {
             let mut fonts = egui::FontDefinitions::default();
 
-            // JetBrains Maple Mono: Latin + CJK in one font, no fallback needed
+            // JetBrains Maple Mono: preferred proportional font for Latin/UI
             if let Ok(data) =
                 std::fs::read("/usr/share/fonts/TTF/JetBrains-Maple-Mono-NF-XX-XX/JetBrainsMapleMono-Regular.ttf")
             {
@@ -987,6 +987,11 @@ impl RadarApp {
                     "lxgw_mono".to_owned(),
                     egui::FontData::from_owned(data).into(),
                 );
+                fonts
+                    .families
+                    .entry(egui::FontFamily::Proportional)
+                    .or_default()
+                    .push("lxgw_mono".to_owned());
                 fonts
                     .families
                     .entry(egui::FontFamily::Monospace)
