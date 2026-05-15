@@ -13,12 +13,6 @@ impl MinimapWidget {
         Self { shared }
     }
 
-    pub fn show(&self, ui: &mut egui::Ui) {
-        let mut pan = Vec2::ZERO;
-        let mut zoom = 1.0;
-        self.show_with_state(ui, None, &mut pan, &mut zoom);
-    }
-
     pub fn show_with_state(
         &self,
         ui: &mut egui::Ui,

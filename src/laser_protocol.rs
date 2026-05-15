@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_parse_valid_no_data() {
-        let mut buf = vec![0u8; 32];
+        let mut buf = vec![0u8; 37];
         // magic
         buf[0] = 0x47;
         buf[1] = 0x4C;
