@@ -44,8 +44,8 @@ RUST_LOG=info cargo run --release
 ### 当前 UI 特性
 
 - 小地图支持拖拽、滚轮缩放和 `Reset View`
-- 默认使用仓库根目录的小地图资源 `img_2026-05-14_13-35-15.png`
-- 左上角圆形头像使用仓库根目录资源 `logo.png`
+- 默认使用 `assets/minimap_bg.png` 作为小地图背景资源
+- 左上角圆形头像使用 `assets/logo.png`
 - 深色模式基于 Catppuccin 风格调色
 
 ## 数据源

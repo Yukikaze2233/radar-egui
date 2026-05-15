@@ -15,8 +15,8 @@ use crate::video_stream::VideoFrame;
 use crate::widgets::{LaserPanel, MinimapWidget, StatusPanels};
 
 static FONT_ONCE: Once = Once::new();
-const MINIMAP_BG_PATH: &str = "img_2026-05-14_13-35-15.png";
-const LOGO_PATH: &str = "logo.png";
+const MINIMAP_BG_PATH: &str = "assets/minimap_bg.png";
+const LOGO_PATH: &str = "assets/logo.png";
 const MINIMAP_DEFAULT_PAN_Y: f32 = 18.0;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -618,31 +618,33 @@ impl RadarApp {
                 );
             }
             ui.add_space(10.0);
-            egui::Grid::new("script_buttons")
-                .num_columns(2)
-                .spacing([8.0, 6.0])
-                .show(ui, |ui| {
-                    let scripts = [
-                        LaserScript::Competition,
-                        LaserScript::Preview,
-                        LaserScript::Stream,
-                        LaserScript::Record,
-                    ];
-                    for &script in &scripts {
+            let scripts = [
+                [LaserScript::Competition, LaserScript::Preview],
+                [LaserScript::Stream, LaserScript::Record],
+            ];
+            ui.columns(2, |columns| {
+                for (row_index, row) in scripts.iter().enumerate() {
+                    for (column, script) in columns.iter_mut().zip(row.iter()) {
                         let label = script.label();
-                        if ui
+                        if column
                             .add_sized(
-                                [ui.available_width(), 30.0],
+                                [column.available_width(), 30.0],
                                 egui::Button::new(label),
                             )
                             .clicked()
                         {
-                            if let Err(e) = self.script_runner.start(script) {
+                            if let Err(e) = self.script_runner.start(*script) {
                                 log::error!("Failed to start {}: {}", label, e);
                             }
                         }
                     }
-                });
+                    if row_index + 1 < scripts.len() {
+                        for column in &mut columns[..] {
+                            column.add_space(6.0);
+                        }
+                    }
+                }
+            });
             if running {
                 ui.add_space(10.0);
                 if ui
