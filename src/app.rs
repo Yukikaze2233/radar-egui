@@ -25,6 +25,31 @@ enum ActiveTab {
     Laser,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum EnemyColor {
+    Red,
+    Blue,
+    Auto,
+}
+
+impl EnemyColor {
+    fn label(&self) -> &str {
+        match self {
+            EnemyColor::Red => "Red",
+            EnemyColor::Blue => "Blue",
+            EnemyColor::Auto => "Auto",
+        }
+    }
+
+    fn fifo_cmd(&self) -> &str {
+        match self {
+            EnemyColor::Red => "enemy red",
+            EnemyColor::Blue => "enemy blue",
+            EnemyColor::Auto => "enemy auto",
+        }
+    }
+}
+
 pub struct RadarApp {
     active_tab: ActiveTab,
     dark_mode: bool,
@@ -53,6 +78,7 @@ pub struct RadarApp {
     video_shutdown_tx: watch::Sender<bool>,
 
     script_runner: ScriptRunner,
+    enemy_color: EnemyColor,
 }
 
 #[derive(PartialEq)]
@@ -115,6 +141,7 @@ impl Default for RadarApp {
             video_shared,
             video_shutdown_tx,
             script_runner: ScriptRunner::new(),
+            enemy_color: EnemyColor::Auto,
         }
     }
 }
@@ -617,7 +644,34 @@ impl RadarApp {
                         .size(11.0),
                 );
             }
-            ui.add_space(10.0);
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("敌方颜色:")
+                        .color(theme::text_muted())
+                        .size(13.0),
+                );
+                egui::ComboBox::from_id_salt("enemy_color")
+                    .selected_text(self.enemy_color.label())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.enemy_color,
+                            EnemyColor::Red,
+                            "Red",
+                        );
+                        ui.selectable_value(
+                            &mut self.enemy_color,
+                            EnemyColor::Blue,
+                            "Blue",
+                        );
+                        ui.selectable_value(
+                            &mut self.enemy_color,
+                            EnemyColor::Auto,
+                            "Auto",
+                        );
+                    });
+            });
+            ui.add_space(8.0);
             let scripts = [
                 [LaserScript::Competition, LaserScript::Preview],
                 [LaserScript::Stream, LaserScript::Record],
@@ -635,6 +689,21 @@ impl RadarApp {
                         {
                             if let Err(e) = self.script_runner.start(*script) {
                                 log::error!("Failed to start {}: {}", label, e);
+                            } else if script.is_daemon() {
+                                let cmd = self.enemy_color.fifo_cmd().to_owned();
+                                std::thread::spawn(move || {
+                                    for _ in 0..100 {
+                                        if std::path::Path::new("/tmp/laser_cmd")
+                                            .exists()
+                                        {
+                                            break;
+                                        }
+                                        std::thread::sleep(std::time::Duration::from_millis(
+                                            50,
+                                        ));
+                                    }
+                                    let _ = script_runner::send_fifo(&cmd);
+                                });
                             }
                         }
                     }
@@ -737,31 +806,20 @@ impl RadarApp {
         FONT_ONCE.call_once(|| {
             let mut fonts = egui::FontDefinitions::default();
 
+            // JetBrains Maple Mono: Latin + CJK in one font, no fallback needed
             if let Ok(data) =
-                std::fs::read("/usr/share/fonts/TTF/JetBrainsMonoNerdFontPropo-Regular.ttf")
+                std::fs::read("/usr/share/fonts/TTF/JetBrains-Maple-Mono-NF-XX-XX/JetBrainsMapleMono-Regular.ttf")
             {
-                log::info!("Loaded JetBrainsMono NFP (proportional English)");
+                log::info!("Loaded JetBrains Maple Mono (Latin + CJK)");
                 fonts.font_data.insert(
-                    "jb_propo".to_owned(),
+                    "maple".to_owned(),
                     egui::FontData::from_owned(data).into(),
                 );
                 fonts
                     .families
                     .entry(egui::FontFamily::Proportional)
                     .or_default()
-                    .insert(0, "jb_propo".to_owned());
-            }
-
-            if let Ok(data) = std::fs::read("/usr/share/fonts/TTF/LXGWWenKaiGBScreen.ttf") {
-                log::info!("Loaded LXGW WenKai GB Screen (CJK fallback)");
-                fonts
-                    .font_data
-                    .insert("lxgw".to_owned(), egui::FontData::from_owned(data).into());
-                fonts
-                    .families
-                    .entry(egui::FontFamily::Proportional)
-                    .or_default()
-                    .push("lxgw".to_owned());
+                    .insert(0, "maple".to_owned());
             }
 
             if let Ok(data) = std::fs::read("/usr/share/fonts/TTF/JetBrainsMono-Regular.ttf") {
