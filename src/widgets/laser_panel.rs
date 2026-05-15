@@ -35,42 +35,42 @@ impl LaserPanel {
 
         self.card(ui, "目标检测", |ui| {
             if obs.detected {
-                ui.label(RichText::new("已检测到目标").color(theme::GREEN).size(16.0));
-                ui.add_space(8.0);
+                ui.label(RichText::new("已检测到目标").color(theme::GREEN).size(15.0));
+                ui.add_space(6.0);
                 egui::Grid::new("target_grid_sidebar")
                     .num_columns(2)
-                    .spacing([24.0, 8.0])
+                    .spacing([16.0, 4.0])
                     .show(ui, |ui| {
-                        ui.label(RichText::new("中心 X").color(theme::subtext0()).size(14.0));
+                        ui.label(RichText::new("中心 X").color(theme::subtext0()).size(12.0));
                         ui.label(
                             RichText::new(format!("{:.1}", obs.center[0]))
                                 .color(theme::text())
-                                .size(16.0),
+                                .size(14.0),
                         );
                         ui.end_row();
-                        ui.label(RichText::new("中心 Y").color(theme::subtext0()).size(14.0));
+                        ui.label(RichText::new("中心 Y").color(theme::subtext0()).size(12.0));
                         ui.label(
                             RichText::new(format!("{:.1}", obs.center[1]))
                                 .color(theme::text())
-                                .size(16.0),
+                                .size(14.0),
                         );
                         ui.end_row();
-                        ui.label(RichText::new("亮度").color(theme::subtext0()).size(14.0));
+                        ui.label(RichText::new("亮度").color(theme::subtext0()).size(12.0));
                         ui.label(
                             RichText::new(format!("{:.2}", obs.brightness))
                                 .color(theme::text())
-                                .size(16.0),
+                                .size(14.0),
                         );
                         ui.end_row();
                         ui.label(
                             RichText::new("轮廓点数")
                                 .color(theme::subtext0())
-                                .size(14.0),
+                                .size(12.0),
                         );
                         ui.label(
                             RichText::new(obs.contour.len().to_string())
                                 .color(theme::text())
-                                .size(16.0),
+                                .size(14.0),
                         );
                         ui.end_row();
                     });
@@ -78,62 +78,67 @@ impl LaserPanel {
                 ui.label(
                     RichText::new("未检测到目标")
                         .color(theme::overlay0())
-                        .size(16.0),
+                        .size(15.0),
                 );
             }
         });
 
-        ui.add_space(16.0);
+        ui.add_space(12.0);
 
         self.card(ui, "模型候选", |ui| {
             if obs.candidates.is_empty() {
-                ui.label(RichText::new("无候选").color(theme::overlay0()).size(16.0));
+                ui.label(RichText::new("无候选").color(theme::overlay0()).size(15.0));
             } else {
-                egui::Grid::new("candidates_grid_sidebar")
-                    .num_columns(5)
-                    .spacing([16.0, 8.0])
-                    .show(ui, |ui| {
-                        ui.label(RichText::new("类别").color(theme::subtext0()).size(14.0));
-                        ui.label(RichText::new("置信度").color(theme::subtext0()).size(14.0));
-                        ui.label(RichText::new("中心 X").color(theme::subtext0()).size(14.0));
-                        ui.label(RichText::new("中心 Y").color(theme::subtext0()).size(14.0));
-                        ui.label(RichText::new("边界框").color(theme::subtext0()).size(14.0));
-                        ui.end_row();
-                        for cand in &obs.candidates {
-                            let class_color = match cand.class_id {
-                                0 => theme::MAUVE,
-                                1 => theme::RED,
-                                2 => theme::BLUE,
-                                _ => theme::overlay0(),
-                            };
-                            ui.label(
-                                RichText::new(LaserObservation::class_name(cand.class_id))
+                for (i, cand) in obs.candidates.iter().enumerate() {
+                    if i > 0 {
+                        ui.add_space(6.0);
+                    }
+                    let class_color = match cand.class_id {
+                        0 => theme::MAUVE,
+                        1 => theme::RED,
+                        2 => theme::BLUE,
+                        _ => theme::overlay0(),
+                    };
+                    egui::Frame::new()
+                        .fill(theme::card_bg_muted())
+                        .stroke(egui::Stroke::new(1.0, theme::border()))
+                        .corner_radius(egui::CornerRadius::same(10))
+                        .inner_margin(egui::Margin::symmetric(12, 8))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new(format!(
+                                        "● {}",
+                                        LaserObservation::class_name(cand.class_id)
+                                    ))
                                     .color(class_color)
-                                    .size(14.0),
-                            );
+                                    .size(13.0),
+                                );
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(
+                                            RichText::new(format!("{:.0}%", cand.score * 100.0))
+                                                .color(theme::text())
+                                                .size(14.0),
+                                        );
+                                    },
+                                );
+                            });
+                            ui.add_space(2.0);
                             ui.label(
-                                RichText::new(format!("{:.0}%", cand.score * 100.0))
-                                    .color(theme::text())
-                                    .size(14.0),
+                                RichText::new(format!(
+                                    "({:.0}, {:.0})  {:.0}×{:.0}",
+                                    cand.center[0],
+                                    cand.center[1],
+                                    cand.bbox[2],
+                                    cand.bbox[3]
+                                ))
+                                .color(theme::subtext0())
+                                .size(11.0),
                             );
-                            ui.label(
-                                RichText::new(format!("{:.1}", cand.center[0]))
-                                    .color(theme::text())
-                                    .size(14.0),
-                            );
-                            ui.label(
-                                RichText::new(format!("{:.1}", cand.center[1]))
-                                    .color(theme::text())
-                                    .size(14.0),
-                            );
-                            ui.label(
-                                RichText::new(format!("{:.0}x{:.0}", cand.bbox[2], cand.bbox[3]))
-                                    .color(theme::text())
-                                    .size(14.0),
-                            );
-                            ui.end_row();
-                        }
-                    });
+                        });
+                }
             }
         });
     }
@@ -142,11 +147,19 @@ impl LaserPanel {
         egui::Frame::new()
             .fill(theme::card_bg())
             .stroke(egui::Stroke::new(1.0, theme::border()))
-            .corner_radius(egui::CornerRadius::ZERO)
-            .inner_margin(egui::Margin::same(16))
+            .corner_radius(egui::CornerRadius::same(14))
+            .shadow(egui::epaint::Shadow {
+                offset: [0, 4],
+                blur: 16,
+                spread: 0,
+                color: theme::shadow(),
+            })
+            .inner_margin(egui::Margin::same(14))
             .show(ui, |ui| {
-                ui.label(RichText::new(title).color(theme::text()).size(18.0));
-                ui.add_space(10.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(RichText::new(title).color(theme::text()).size(15.0));
+                });
+                ui.add_space(8.0);
                 add_contents(ui);
             });
     }
