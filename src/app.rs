@@ -79,6 +79,8 @@ pub struct RadarApp {
 
     script_runner: ScriptRunner,
     enemy_color: EnemyColor,
+    stream_on_start: bool,
+    record_on_start: bool,
 }
 
 #[derive(PartialEq)]
@@ -142,6 +144,8 @@ impl Default for RadarApp {
             video_shutdown_tx,
             script_runner: ScriptRunner::new(),
             enemy_color: EnemyColor::Auto,
+            stream_on_start: true,
+            record_on_start: false,
         }
     }
 }
@@ -628,7 +632,7 @@ impl RadarApp {
                 .map(|s| s.label())
                 .unwrap_or("Idle");
 
-            ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.label(
                     egui::RichText::new("状态:")
                         .color(theme::text_muted())
@@ -671,7 +675,10 @@ impl RadarApp {
                         );
                     });
             });
-            ui.add_space(8.0);
+            ui.add_space(4.0);
+            ui.checkbox(&mut self.stream_on_start, "启动时推流");
+            ui.checkbox(&mut self.record_on_start, "启动时内录");
+            ui.add_space(6.0);
             let scripts = [
                 [LaserScript::Competition, LaserScript::Preview],
                 [LaserScript::Stream, LaserScript::Record],
@@ -690,11 +697,25 @@ impl RadarApp {
                             if let Err(e) = self.script_runner.start(*script) {
                                 log::error!("Failed to start {}: {}", label, e);
                             } else if script.is_daemon() {
-                                let cmd = self.enemy_color.fifo_cmd().to_owned();
+                                let enemy_cmd = self.enemy_color.fifo_cmd().to_owned();
+                                let stream_cmd = if self.stream_on_start {
+                                    "stream on"
+                                } else {
+                                    "stream off"
+                                }
+                                .to_owned();
+                                let record_cmd = if self.record_on_start {
+                                    "record on"
+                                } else {
+                                    "record off"
+                                }
+                                .to_owned();
                                 std::thread::spawn(move || {
-                                    // 轮询写入直到 daemon 打开 FIFO 读端（最多 5s）
                                     for _ in 0..100 {
-                                        if script_runner::send_fifo(&cmd).is_ok() {
+                                        let ok = script_runner::send_fifo(&enemy_cmd).is_ok()
+                                            && script_runner::send_fifo(&stream_cmd).is_ok()
+                                            && script_runner::send_fifo(&record_cmd).is_ok();
+                                        if ok {
                                             return;
                                         }
                                         std::thread::sleep(std::time::Duration::from_millis(
@@ -702,7 +723,7 @@ impl RadarApp {
                                         ));
                                     }
                                     log::warn!(
-                                        "Timed out sending enemy color command to daemon"
+                                        "Timed out sending launch config to daemon"
                                     );
                                 });
                             }
@@ -725,6 +746,128 @@ impl RadarApp {
                     .clicked()
                 {
                     self.script_runner.stop();
+                }
+            }
+        });
+
+        ui.add_space(14.0);
+        Self::white_card(ui, "比赛进程", |ui| {
+            let sdr_ok = self.script_runner.is_sdr_running();
+            let unity_ok = self.script_runner.is_unity_running();
+
+            // SDR 桥接
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new("SDR:")
+                        .color(theme::text_muted())
+                        .size(13.0),
+                );
+                Self::status_chip(ui, sdr_ok, if sdr_ok { "Running" } else { "Idle" });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if sdr_ok {
+                        if ui
+                            .add_sized([72.0, 24.0], egui::Button::new("Stop"))
+                            .clicked()
+                        {
+                            self.script_runner.stop_sdr();
+                        }
+                    } else {
+                        if ui
+                            .add_sized([72.0, 24.0], egui::Button::new("Start"))
+                            .clicked()
+                        {
+                            if let Err(e) = self.script_runner.start_sdr() {
+                                log::error!("Failed to start SDR: {}", e);
+                            }
+                        }
+                    }
+                });
+            });
+            ui.add_space(2.0);
+
+            // Unity RADAR
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new("Radar:")
+                        .color(theme::text_muted())
+                        .size(13.0),
+                );
+                Self::status_chip(ui, unity_ok, if unity_ok { "Running" } else { "Idle" });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if unity_ok {
+                        if ui
+                            .add_sized([72.0, 24.0], egui::Button::new("Stop"))
+                            .clicked()
+                        {
+                            self.script_runner.stop_unity();
+                        }
+                    } else {
+                        if ui
+                            .add_sized([72.0, 24.0], egui::Button::new("Start"))
+                            .clicked()
+                        {
+                            if let Err(e) = self.script_runner.start_unity() {
+                                log::error!("Failed to start Unity: {}", e);
+                            }
+                        }
+                    }
+                });
+            });
+
+            // Start All — 顺序启动 SDR → Laser
+            ui.add_space(10.0);
+            if ui
+                .add_sized(
+                    [ui.available_width(), 32.0],
+                    egui::Button::new("Start All (SDR → Laser Competition)"),
+                )
+                .clicked()
+            {
+                let enemy_cmd = self.enemy_color.fifo_cmd().to_owned();
+                let stream_cmd = if self.stream_on_start {
+                    "stream on"
+                } else {
+                    "stream off"
+                }
+                .to_owned();
+                let record_cmd = if self.record_on_start {
+                    "record on"
+                } else {
+                    "record off"
+                }
+                .to_owned();
+                if let Err(e) =
+                    self.script_runner
+                        .start_all(LaserScript::Competition)
+                {
+                    log::error!("Start All failed: {}", e);
+                } else {
+                    std::thread::spawn(move || {
+                        for _ in 0..100 {
+                            let ok = script_runner::send_fifo(&enemy_cmd).is_ok()
+                                && script_runner::send_fifo(&stream_cmd).is_ok()
+                                && script_runner::send_fifo(&record_cmd).is_ok();
+                            if ok {
+                                return;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                        log::warn!("Timed out sending config after Start All");
+                    });
+                }
+            }
+
+            // Stop All
+            if sdr_ok || unity_ok || self.script_runner.is_running() {
+                ui.add_space(6.0);
+                if ui
+                    .add_sized(
+                        [ui.available_width(), 30.0],
+                        egui::Button::new("Stop All"),
+                    )
+                    .clicked()
+                {
+                    self.script_runner.stop_all();
                 }
             }
         });
