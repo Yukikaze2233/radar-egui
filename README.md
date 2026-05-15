@@ -35,6 +35,10 @@ RUST_LOG=info cargo run --release
 
 ![Laser HUD](docs/laser-hud.png)
 
+### 集成概览
+
+![HUD Overview](docs/hud-overview.png)
+
 ## UI 布局
 
 - 左侧紧凑模式栏：切换 `Radar / Laser` 和深浅色主题
