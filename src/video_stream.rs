@@ -86,14 +86,15 @@ fn open_shm() -> Result<ShmMapping, String> {
         ptr: header_ptr as *mut u8,
     };
 
-    if header.magic() != SHM_MAGIC {
+    let observed_magic = header.magic();
+    if observed_magic != SHM_MAGIC {
         unsafe {
             libc::munmap(header_ptr, HEADER_SIZE);
             libc::close(fd);
         }
         return Err(format!(
             "bad magic: 0x{:08X} (expected 0x{:08X})",
-            header.magic(),
+            observed_magic,
             SHM_MAGIC
         ));
     }
