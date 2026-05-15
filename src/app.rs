@@ -632,7 +632,7 @@ impl RadarApp {
                 .map(|s| s.label())
                 .unwrap_or("Idle");
 
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new("状态:")
                         .color(theme::text_muted())
@@ -756,7 +756,7 @@ impl RadarApp {
             let unity_ok = self.script_runner.is_unity_running();
 
             // SDR 桥接
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new("SDR:")
                         .color(theme::text_muted())
@@ -786,7 +786,7 @@ impl RadarApp {
             ui.add_space(2.0);
 
             // Unity RADAR
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new("Radar:")
                         .color(theme::text_muted())
