@@ -6,6 +6,7 @@ use tokio::sync::watch;
 use crate::laser_protocol::LaserObservation;
 use crate::protocol::RoboMasterSignalInfo;
 use crate::rerun_viz::RerunVisualizer;
+use crate::script_runner::{self, LaserScript, ScriptRunner};
 use crate::tcp_client;
 use crate::theme;
 use crate::udp_client;
@@ -50,6 +51,8 @@ pub struct RadarApp {
     laser_port: String,
     video_shared: Arc<Mutex<Option<VideoFrame>>>,
     video_shutdown_tx: watch::Sender<bool>,
+
+    script_runner: ScriptRunner,
 }
 
 #[derive(PartialEq)]
@@ -111,6 +114,7 @@ impl Default for RadarApp {
             laser_port: laser_port.to_string(),
             video_shared,
             video_shutdown_tx,
+            script_runner: ScriptRunner::new(),
         }
     }
 }
@@ -155,16 +159,7 @@ impl RadarApp {
     fn send_laser_command(&self, cmd: &str) {
         let cmd = cmd.to_owned();
         std::thread::spawn(move || {
-            use std::io::Write;
-            match std::fs::OpenOptions::new().write(true).open("/tmp/laser_cmd") {
-                Ok(mut fifo) => {
-                    let _ = writeln!(fifo, "{cmd}");
-                    log::info!("Sent laser command: {}", cmd);
-                }
-                Err(e) => {
-                    log::warn!("Failed to send laser command: {}", e);
-                }
-            }
+            let _ = script_runner::send_fifo(&cmd);
         });
     }
 
@@ -593,6 +588,72 @@ impl RadarApp {
                 .clicked()
             {
                 self.reconnect_laser();
+            }
+        });
+
+        ui.add_space(14.0);
+        Self::white_card(ui, "脚本控制", |ui| {
+            let running = self.script_runner.is_running();
+            let daemon_ok = script_runner::daemon_alive();
+            let active_label = self
+                .script_runner
+                .active()
+                .map(|s| s.label())
+                .unwrap_or("Idle");
+
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("状态:")
+                        .color(theme::text_muted())
+                        .size(13.0),
+                );
+                Self::status_chip(ui, running, active_label);
+            });
+            if daemon_ok && !running {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("daemon 存活 (可通过流控制发送命令)")
+                        .color(theme::text_faint())
+                        .size(11.0),
+                );
+            }
+            ui.add_space(10.0);
+            egui::Grid::new("script_buttons")
+                .num_columns(2)
+                .spacing([8.0, 6.0])
+                .show(ui, |ui| {
+                    let scripts = [
+                        LaserScript::Competition,
+                        LaserScript::Preview,
+                        LaserScript::Stream,
+                        LaserScript::Record,
+                    ];
+                    for &script in &scripts {
+                        let label = script.label();
+                        if ui
+                            .add_sized(
+                                [ui.available_width(), 30.0],
+                                egui::Button::new(label),
+                            )
+                            .clicked()
+                        {
+                            if let Err(e) = self.script_runner.start(script) {
+                                log::error!("Failed to start {}: {}", label, e);
+                            }
+                        }
+                    }
+                });
+            if running {
+                ui.add_space(10.0);
+                if ui
+                    .add_sized(
+                        [ui.available_width(), 30.0],
+                        egui::Button::new("Stop"),
+                    )
+                    .clicked()
+                {
+                    self.script_runner.stop();
+                }
             }
         });
 
