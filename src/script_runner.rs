@@ -1,42 +1,30 @@
-//! 激光引导脚本调用模块
+//! 比赛组件进程管理模块
 //!
-//! 从 radar-egui 中 spawn laser_guidance 的 .script/ 脚本，
-//! 支持 competition / preview / stream / record 四种进程。
-//!
-//! # 集成方式（手动）
-//!
-//! 1. `main.rs` 添加 `mod script_runner;`
-//! 2. `app.rs` 顶部 `use crate::script_runner::{LaserScript, ScriptRunner, daemon_alive, send_fifo};`
-//! 3. `RadarApp` 结构体加字段 `script_runner: ScriptRunner`
-//! 4. `Default` 初始化 `script_runner: ScriptRunner::new()`
-//! 5. 在 Laser 侧边栏加按钮调用 `start()` / `stop()`
+//! 从 radar-egui 中 spawn 比赛所需的三个外部进程：
+//!   - laser_guidance  脚本 (competition / preview / stream / record)
+//!   - SDR 数据桥接    (alliance_radar_sdr/tcp/tcp_launch.py)
+//!   - Unity RADAR     (RADAR_APP/RADAR.x86_64)
 
 use std::io;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
-/// 激光脚本目录，相对于 radar-egui 项目根目录。
-/// 默认假设 laser_guidance 仓库在同级目录下。
 const LASER_SCRIPTS_DIR: &str = "../laser_guidance/.script";
 const LASER_FIFO: &str = "/tmp/laser_cmd";
+const SDR_REPO: &str = "../alliance_radar_sdr";
+const UNITY_BIN: &str = "../RADAR_APP/RADAR.x86_64";
 
 // ── LaserScript ──────────────────────────────────────────────────────────────
 
-/// 可启动的激光引导脚本类型
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum LaserScript {
-    /// 比赛模式守护进程（tool_competition + ffplay）
     Competition,
-    /// 本地预览（cv::imshow 窗口）
     Preview,
-    /// RTP 推流守护进程（tool_preview + ffplay）
     Stream,
-    /// 视频录制
     Record,
 }
 
 impl LaserScript {
-    /// UI 展示用标签
     pub fn label(&self) -> &'static str {
         match self {
             LaserScript::Competition => "Competition",
@@ -46,7 +34,6 @@ impl LaserScript {
         }
     }
 
-    /// 对应的 .script/ 下脚本文件名
     fn script_name(&self) -> &'static str {
         match self {
             LaserScript::Competition => "competition",
@@ -56,21 +43,23 @@ impl LaserScript {
         }
     }
 
-    /// 该脚本是否以 daemon 方式运行（后台 tool_* 进程不随 bash wrapper 退出）
-    fn is_daemon(&self) -> bool {
+    pub fn is_daemon(&self) -> bool {
         matches!(self, LaserScript::Competition | LaserScript::Stream)
     }
 }
 
 // ── ScriptRunner ─────────────────────────────────────────────────────────────
 
-/// 管理单个激光脚本子进程的生命周期
 pub struct ScriptRunner {
-    /// bash 封装脚本的子进程句柄。daemon 类脚本的 wrapper 在 ffplay
-    /// 关闭后自行退出，但后台 tool_* 进程仍存活。
+    // Laser
     child: Option<Child>,
-    /// 当前活动的脚本类型
     active: Option<LaserScript>,
+
+    // SDR bridge
+    sdr_child: Option<Child>,
+
+    // Unity RADAR
+    unity_child: Option<Child>,
 }
 
 impl ScriptRunner {
@@ -78,14 +67,13 @@ impl ScriptRunner {
         Self {
             child: None,
             active: None,
+            sdr_child: None,
+            unity_child: None,
         }
     }
 
-    /// 启动脚本（非阻塞），重复调用前会先 `stop()` 旧的。
-    ///
-    /// - Competition / Stream：spawn bash → 后台启动 tool_* daemon → 自动拉起 ffplay
-    /// - Preview：spawn bash → 阻塞在 cv::imshow 直到窗口关闭
-    /// - Record：spawn bash → 阻塞在 tool_record 直到录制结束
+    // ── Laser ────────────────────────────────────────────────────────────────
+
     pub fn start(&mut self, script: LaserScript) -> io::Result<()> {
         self.stop();
 
@@ -102,50 +90,122 @@ impl ScriptRunner {
         Ok(())
     }
 
-    /// 停止当前脚本：
-    /// - daemon 类：先通过 FIFO 发送 "quit" 优雅退出守护进程，再 kill bash wrapper
-    /// - 非 daemon 类：直接 kill 子进程
     pub fn stop(&mut self) {
         if let Some(active) = self.active {
             if active.is_daemon() {
                 send_fifo("quit").ok();
-                // 给 daemon 一点时间清理
                 std::thread::sleep(std::time::Duration::from_millis(200));
             }
         }
-
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
             log::info!("Stopped laser script wrapper");
         }
-
         self.active = None;
     }
 
-    /// 是否有脚本正在运行（bash wrapper 存活）
     pub fn is_running(&self) -> bool {
         self.active.is_some()
     }
 
-    /// 当前活动的脚本类型
     pub fn active(&self) -> Option<LaserScript> {
         self.active
+    }
+
+    // ── SDR ──────────────────────────────────────────────────────────────────
+
+    /// 启动 SDR 数据桥接 (tcp_launch.py)
+    ///
+    /// cd 到 tcp/ 子目录解决 `from tcp_comm` 同级导入，
+    /// PYTHONPATH=.. 解决 `from parser.xxx` 跨目录导入。
+    pub fn start_sdr(&mut self) -> io::Result<()> {
+        self.stop_sdr();
+
+        let script_dir = PathBuf::from(SDR_REPO).join("tcp");
+        let child = Command::new("python3")
+            .arg("tcp_launch.py")
+            .current_dir(&script_dir)
+            .env("PYTHONPATH", "..")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .stdin(Stdio::null())
+            .spawn()?;
+
+        log::info!("Started SDR bridge (pid={})", child.id());
+        self.sdr_child = Some(child);
+        Ok(())
+    }
+
+    pub fn stop_sdr(&mut self) {
+        if let Some(mut child) = self.sdr_child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+            log::info!("Stopped SDR bridge");
+        }
+    }
+
+    pub fn is_sdr_running(&self) -> bool {
+        self.sdr_child.is_some()
+    }
+
+    // ── Unity RADAR ──────────────────────────────────────────────────────────
+
+    pub fn start_unity(&mut self) -> io::Result<()> {
+        self.stop_unity();
+
+        let child = Command::new(UNITY_BIN)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .stdin(Stdio::null())
+            .spawn()?;
+
+        log::info!("Started Unity RADAR (pid={})", child.id());
+        self.unity_child = Some(child);
+        Ok(())
+    }
+
+    pub fn stop_unity(&mut self) {
+        if let Some(mut child) = self.unity_child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+            log::info!("Stopped Unity RADAR");
+        }
+    }
+
+    pub fn is_unity_running(&self) -> bool {
+        self.unity_child.is_some()
+    }
+
+    // ── 一键比赛 ────────────────────────────────────────────────────────────
+
+    /// 顺序启动 SDR → Laser (需外部传入 script 和 enemy_cmd)
+    /// 调用方应自行处理 Laser 启动和 enemy_color FIFO 发送
+    pub fn start_all(&mut self, laser_script: LaserScript) -> io::Result<()> {
+        self.start_sdr()?;
+
+        // 等 SDR 桥接连上 GNU Radio
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        self.start(laser_script)
+    }
+
+    /// 停止全部进程
+    pub fn stop_all(&mut self) {
+        self.stop();
+        self.stop_sdr();
+        self.stop_unity();
     }
 }
 
 impl Drop for ScriptRunner {
     fn drop(&mut self) {
-        self.stop();
+        self.stop_all();
     }
 }
 
 // ── 静态辅助函数 ────────────────────────────────────────────────────────────
 
-/// 检查是否有激光守护进程在运行（competition / stream 的 tool_* 进程）
-///
-/// 通过 FIFO 管道存在性判断，比 pgrep 更轻量。
-/// 注意：daemon_alive 为 true 意味着可以通过 `send_fifo` 发送 runtime 命令。
 pub fn daemon_alive() -> bool {
     use std::os::unix::fs::FileTypeExt;
     match std::fs::metadata(LASER_FIFO) {
@@ -154,32 +214,13 @@ pub fn daemon_alive() -> bool {
     }
 }
 
-/// 向激光守护进程的 FIFO 发送控制命令
-///
-/// # 可用命令
-///
-/// | 命令 | 作用 |
-/// |------|------|
-/// | `stream on` / `stream off` | 推流开关 |
-/// | `record on` / `record off` | 录制开关 |
-/// | `enemy red` / `enemy blue` / `enemy auto` | 敌方颜色过滤 |
-/// | `backend tensorrt` / `backend onnx` | 推理后端切换 |
-/// | `ekf on` / `ekf off` | EKF 跟踪开关 |
-/// | `quit` | 优雅退出守护进程 |
-///
-/// # 示例
-///
-/// ```ignore
-/// send_fifo("stream on")?;
-/// send_fifo("enemy red")?;
-/// ```
 pub fn send_fifo(cmd: &str) -> io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
 
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true);
-    opts.custom_flags(libc::O_NONBLOCK); // 防止无人读取时阻塞
+    opts.custom_flags(libc::O_NONBLOCK);
 
     let mut fifo = opts.open(LASER_FIFO)?;
     writeln!(fifo, "{cmd}")?;
@@ -211,6 +252,8 @@ mod tests {
     fn test_new_runner_is_idle() {
         let runner = ScriptRunner::new();
         assert!(!runner.is_running());
+        assert!(!runner.is_sdr_running());
+        assert!(!runner.is_unity_running());
         assert!(runner.active().is_none());
     }
 }
