@@ -6,6 +6,7 @@ use tokio::sync::watch;
 use crate::laser_protocol::LaserObservation;
 use crate::protocol::RoboMasterSignalInfo;
 use crate::rerun_viz::RerunVisualizer;
+use crate::script_runner::{self, LaserScript, ScriptRunner};
 use crate::tcp_client;
 use crate::theme;
 use crate::udp_client;
@@ -14,14 +15,39 @@ use crate::video_stream::VideoFrame;
 use crate::widgets::{LaserPanel, MinimapWidget, StatusPanels};
 
 static FONT_ONCE: Once = Once::new();
-const MINIMAP_BG_PATH: &str = "img_2026-05-14_13-35-15.png";
-const LOGO_PATH: &str = "logo.png";
+const MINIMAP_BG_PATH: &str = "assets/minimap_bg.png";
+const LOGO_PATH: &str = "assets/logo.png";
 const MINIMAP_DEFAULT_PAN_Y: f32 = 18.0;
 
 #[derive(PartialEq, Clone, Copy)]
 enum ActiveTab {
     Radar,
     Laser,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum EnemyColor {
+    Red,
+    Blue,
+    Auto,
+}
+
+impl EnemyColor {
+    fn label(&self) -> &str {
+        match self {
+            EnemyColor::Red => "Red",
+            EnemyColor::Blue => "Blue",
+            EnemyColor::Auto => "Auto",
+        }
+    }
+
+    fn fifo_cmd(&self) -> &str {
+        match self {
+            EnemyColor::Red => "enemy red",
+            EnemyColor::Blue => "enemy blue",
+            EnemyColor::Auto => "enemy auto",
+        }
+    }
 }
 
 pub struct RadarApp {
@@ -50,6 +76,11 @@ pub struct RadarApp {
     laser_port: String,
     video_shared: Arc<Mutex<Option<VideoFrame>>>,
     video_shutdown_tx: watch::Sender<bool>,
+
+    script_runner: ScriptRunner,
+    enemy_color: EnemyColor,
+    stream_on_start: bool,
+    record_on_start: bool,
 }
 
 #[derive(PartialEq)]
@@ -111,6 +142,10 @@ impl Default for RadarApp {
             laser_port: laser_port.to_string(),
             video_shared,
             video_shutdown_tx,
+            script_runner: ScriptRunner::new(),
+            enemy_color: EnemyColor::Auto,
+            stream_on_start: true,
+            record_on_start: false,
         }
     }
 }
@@ -155,20 +190,8 @@ impl RadarApp {
     fn send_laser_command(&self, cmd: &str) {
         let cmd = cmd.to_owned();
         std::thread::spawn(move || {
-            use std::io::Write;
-            use std::os::unix::fs::OpenOptionsExt;
-            let mut opts = std::fs::OpenOptions::new();
-            opts.write(true);
-            // O_NONBLOCK for FIFO — don't hang if nobody is reading
-            opts.custom_flags(libc::O_NONBLOCK);
-            match opts.open("/tmp/laser_cmd") {
-                Ok(mut fifo) => {
-                    let _ = writeln!(fifo, "{cmd}");
-                    log::info!("Sent laser command: {}", cmd);
-                }
-                Err(e) => {
-                    log::warn!("Failed to send laser command: {}", e);
-                }
+            if let Err(e) = script_runner::send_fifo(&cmd) {
+                log::warn!("Failed to send laser command '{}': {}", cmd, e);
             }
         });
     }
@@ -602,6 +625,256 @@ impl RadarApp {
         });
 
         ui.add_space(14.0);
+        Self::white_card(ui, "脚本控制", |ui| {
+            let running = self.script_runner.is_running();
+            let daemon_ok = script_runner::daemon_alive();
+            let active_label = self
+                .script_runner
+                .active()
+                .map(|s| s.label())
+                .unwrap_or("Idle");
+
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("状态:")
+                        .color(theme::text_muted())
+                        .size(13.0),
+                );
+                Self::status_chip(ui, running, active_label);
+            });
+            if daemon_ok && !running {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("daemon 存活 (可通过流控制发送命令)")
+                        .color(theme::text_faint())
+                        .size(11.0),
+                );
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("敌方颜色:")
+                        .color(theme::text_muted())
+                        .size(13.0),
+                );
+                egui::ComboBox::from_id_salt("enemy_color")
+                    .selected_text(self.enemy_color.label())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.enemy_color,
+                            EnemyColor::Red,
+                            "Red",
+                        );
+                        ui.selectable_value(
+                            &mut self.enemy_color,
+                            EnemyColor::Blue,
+                            "Blue",
+                        );
+                        ui.selectable_value(
+                            &mut self.enemy_color,
+                            EnemyColor::Auto,
+                            "Auto",
+                        );
+                    });
+            });
+            ui.add_space(4.0);
+            ui.checkbox(&mut self.stream_on_start, "启动时推流");
+            ui.checkbox(&mut self.record_on_start, "启动时内录");
+            ui.add_space(6.0);
+            let scripts = [
+                [LaserScript::Competition, LaserScript::Preview],
+                [LaserScript::Stream, LaserScript::Record],
+            ];
+            ui.columns(2, |columns| {
+                for (row_index, row) in scripts.iter().enumerate() {
+                    for (column, script) in columns.iter_mut().zip(row.iter()) {
+                        let label = script.label();
+                        if column
+                            .add_sized(
+                                [column.available_width(), 30.0],
+                                egui::Button::new(label),
+                            )
+                            .clicked()
+                        {
+                            if let Err(e) = self.script_runner.start(*script) {
+                                log::error!("Failed to start {}: {}", label, e);
+                            } else if script.is_daemon() {
+                                let enemy_cmd = self.enemy_color.fifo_cmd().to_owned();
+                                let stream_cmd = if self.stream_on_start {
+                                    "stream on"
+                                } else {
+                                    "stream off"
+                                }
+                                .to_owned();
+                                let record_cmd = if self.record_on_start {
+                                    "record on"
+                                } else {
+                                    "record off"
+                                }
+                                .to_owned();
+                                std::thread::spawn(move || {
+                                    for _ in 0..100 {
+                                        let ok = script_runner::send_fifo(&enemy_cmd).is_ok()
+                                            && script_runner::send_fifo(&stream_cmd).is_ok()
+                                            && script_runner::send_fifo(&record_cmd).is_ok();
+                                        if ok {
+                                            return;
+                                        }
+                                        std::thread::sleep(std::time::Duration::from_millis(
+                                            50,
+                                        ));
+                                    }
+                                    log::warn!(
+                                        "Timed out sending launch config to daemon"
+                                    );
+                                });
+                            }
+                        }
+                    }
+                    if row_index + 1 < scripts.len() {
+                        for column in &mut columns[..] {
+                            column.add_space(6.0);
+                        }
+                    }
+                }
+            });
+            if running {
+                ui.add_space(10.0);
+                if ui
+                    .add_sized(
+                        [ui.available_width(), 30.0],
+                        egui::Button::new("Stop"),
+                    )
+                    .clicked()
+                {
+                    self.script_runner.stop();
+                }
+            }
+        });
+
+        ui.add_space(14.0);
+        Self::white_card(ui, "比赛进程", |ui| {
+            let sdr_ok = self.script_runner.is_sdr_running();
+            let unity_ok = self.script_runner.is_unity_running();
+
+            // SDR 桥接
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("SDR:")
+                        .color(theme::text_muted())
+                        .size(13.0),
+                );
+                Self::status_chip(ui, sdr_ok, if sdr_ok { "Running" } else { "Idle" });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if sdr_ok {
+                        if ui
+                            .add_sized([72.0, 24.0], egui::Button::new("Stop"))
+                            .clicked()
+                        {
+                            self.script_runner.stop_sdr();
+                        }
+                    } else {
+                        if ui
+                            .add_sized([72.0, 24.0], egui::Button::new("Start"))
+                            .clicked()
+                        {
+                            if let Err(e) = self.script_runner.start_sdr() {
+                                log::error!("Failed to start SDR: {}", e);
+                            }
+                        }
+                    }
+                });
+            });
+            ui.add_space(2.0);
+
+            // Unity RADAR
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("Radar:")
+                        .color(theme::text_muted())
+                        .size(13.0),
+                );
+                Self::status_chip(ui, unity_ok, if unity_ok { "Running" } else { "Idle" });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if unity_ok {
+                        if ui
+                            .add_sized([72.0, 24.0], egui::Button::new("Stop"))
+                            .clicked()
+                        {
+                            self.script_runner.stop_unity();
+                        }
+                    } else {
+                        if ui
+                            .add_sized([72.0, 24.0], egui::Button::new("Start"))
+                            .clicked()
+                        {
+                            if let Err(e) = self.script_runner.start_unity() {
+                                log::error!("Failed to start Unity: {}", e);
+                            }
+                        }
+                    }
+                });
+            });
+
+            // Start All — 顺序启动 SDR → Laser
+            ui.add_space(10.0);
+            if ui
+                .add_sized(
+                    [ui.available_width(), 32.0],
+                    egui::Button::new("Start All (SDR → Laser Competition)"),
+                )
+                .clicked()
+            {
+                let enemy_cmd = self.enemy_color.fifo_cmd().to_owned();
+                let stream_cmd = if self.stream_on_start {
+                    "stream on"
+                } else {
+                    "stream off"
+                }
+                .to_owned();
+                let record_cmd = if self.record_on_start {
+                    "record on"
+                } else {
+                    "record off"
+                }
+                .to_owned();
+                if let Err(e) =
+                    self.script_runner
+                        .start_all(LaserScript::Competition)
+                {
+                    log::error!("Start All failed: {}", e);
+                } else {
+                    std::thread::spawn(move || {
+                        for _ in 0..100 {
+                            let ok = script_runner::send_fifo(&enemy_cmd).is_ok()
+                                && script_runner::send_fifo(&stream_cmd).is_ok()
+                                && script_runner::send_fifo(&record_cmd).is_ok();
+                            if ok {
+                                return;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                        log::warn!("Timed out sending config after Start All");
+                    });
+                }
+            }
+
+            // Stop All
+            if sdr_ok || unity_ok || self.script_runner.is_running() {
+                ui.add_space(6.0);
+                if ui
+                    .add_sized(
+                        [ui.available_width(), 30.0],
+                        egui::Button::new("Stop All"),
+                    )
+                    .clicked()
+                {
+                    self.script_runner.stop_all();
+                }
+            }
+        });
+
+        ui.add_space(14.0);
         Self::white_card(ui, "流控制", |ui| {
             ui.columns(2, |columns| {
                 if columns[0]
@@ -679,31 +952,20 @@ impl RadarApp {
         FONT_ONCE.call_once(|| {
             let mut fonts = egui::FontDefinitions::default();
 
+            // JetBrains Maple Mono: Latin + CJK in one font, no fallback needed
             if let Ok(data) =
-                std::fs::read("/usr/share/fonts/TTF/JetBrainsMonoNerdFontPropo-Regular.ttf")
+                std::fs::read("/usr/share/fonts/TTF/JetBrains-Maple-Mono-NF-XX-XX/JetBrainsMapleMono-Regular.ttf")
             {
-                log::info!("Loaded JetBrainsMono NFP (proportional English)");
+                log::info!("Loaded JetBrains Maple Mono (Latin + CJK)");
                 fonts.font_data.insert(
-                    "jb_propo".to_owned(),
+                    "maple".to_owned(),
                     egui::FontData::from_owned(data).into(),
                 );
                 fonts
                     .families
                     .entry(egui::FontFamily::Proportional)
                     .or_default()
-                    .insert(0, "jb_propo".to_owned());
-            }
-
-            if let Ok(data) = std::fs::read("/usr/share/fonts/TTF/LXGWWenKaiGBScreen.ttf") {
-                log::info!("Loaded LXGW WenKai GB Screen (CJK fallback)");
-                fonts
-                    .font_data
-                    .insert("lxgw".to_owned(), egui::FontData::from_owned(data).into());
-                fonts
-                    .families
-                    .entry(egui::FontFamily::Proportional)
-                    .or_default()
-                    .push("lxgw".to_owned());
+                    .insert(0, "maple".to_owned());
             }
 
             if let Ok(data) = std::fs::read("/usr/share/fonts/TTF/JetBrainsMono-Regular.ttf") {

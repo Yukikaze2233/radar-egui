@@ -2,6 +2,7 @@ mod app;
 mod laser_protocol;
 mod protocol;
 mod rerun_viz;
+mod script_runner;
 mod tcp_client;
 mod theme;
 mod udp_client;
