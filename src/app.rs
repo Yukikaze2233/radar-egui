@@ -190,7 +190,9 @@ impl RadarApp {
     fn send_laser_command(&self, cmd: &str) {
         let cmd = cmd.to_owned();
         std::thread::spawn(move || {
-            let _ = script_runner::send_fifo(&cmd);
+            if let Err(e) = script_runner::send_fifo(&cmd) {
+                log::warn!("Failed to send laser command '{}': {}", cmd, e);
+            }
         });
     }
 
