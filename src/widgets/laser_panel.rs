@@ -18,12 +18,6 @@ impl LaserPanel {
         Self { shared, video }
     }
 
-    pub fn show(&self, ui: &mut egui::Ui) {
-        self.show_video_stage(ui);
-        ui.add_space(16.0);
-        self.show_analysis_sidebar(ui);
-    }
-
     pub fn show_video_stage(&self, ui: &mut egui::Ui) {
         let obs = match self.shared.lock() {
             Ok(state) => state.clone(),
