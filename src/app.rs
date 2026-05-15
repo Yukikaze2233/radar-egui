@@ -14,9 +14,8 @@ use crate::video_stream::VideoFrame;
 use crate::widgets::{LaserPanel, MinimapWidget, StatusPanels};
 
 static FONT_ONCE: Once = Once::new();
-const MINIMAP_BG_PATH: &str =
-    "/home/yukikaze/Documents/workspace/radar/radar-egui/img_2026-05-14_13-35-15.png";
-const LOGO_PATH: &str = "/home/yukikaze/Documents/workspace/radar/radar-egui/logo.png";
+const MINIMAP_BG_PATH: &str = "img_2026-05-14_13-35-15.png";
+const LOGO_PATH: &str = "logo.png";
 const MINIMAP_DEFAULT_PAN_Y: f32 = 18.0;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -658,9 +657,9 @@ impl RadarApp {
 
     fn status_chip(ui: &mut egui::Ui, ok: bool, label: &str) {
         let fill = if ok {
-            egui::Color32::from_rgb(0xe7, 0xf8, 0xee)
+            theme::success_bg()
         } else {
-            egui::Color32::from_rgb(0xfe, 0xee, 0xee)
+            theme::error_bg()
         };
         let text = if ok { theme::GREEN } else { theme::RED };
         egui::Frame::new()

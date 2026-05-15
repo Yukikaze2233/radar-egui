@@ -158,11 +158,14 @@ impl LaserPanel {
     }
 }
 
+const MIN_VIDEO_WIDTH: f32 = 320.0;
+const MIN_VIDEO_HEIGHT: f32 = 220.0;
+
 impl LaserPanel {
     fn draw_video_with_overlay(&self, ui: &mut egui::Ui, obs: &LaserObservation) {
         let available = ui.available_size();
-        let width = available.x.max(320.0);
-        let height = (width * 9.0 / 16.0).max(220.0);
+        let width = available.x.max(MIN_VIDEO_WIDTH);
+        let height = (width * 9.0 / 16.0).max(MIN_VIDEO_HEIGHT);
         let size = Vec2::new(width, height);
         let (response, painter) = ui.allocate_painter(size, egui::Sense::hover());
         let rect = response.rect;
@@ -226,16 +229,13 @@ fn draw_overlay(
     scale_x: f32,
     scale_y: f32,
 ) {
+    const DETECTION_THRESHOLD: f32 = 0.25;
+
     for cand in &obs.candidates {
-        if cand.score < 0.25 {
+        if cand.score < DETECTION_THRESHOLD {
             continue;
         }
-        let color = match cand.class_id {
-            0 => Color32::from_rgb(255, 0, 255),
-            1 => Color32::from_rgb(255, 50, 50),
-            2 => Color32::from_rgb(50, 100, 255),
-            _ => Color32::from_rgb(100, 255, 100),
-        };
+        let color = theme::class_color(cand.class_id);
         let x = rect.left() + cand.bbox[0] * scale_x;
         let y = rect.top() + cand.bbox[1] * scale_y;
         painter.rect_stroke(

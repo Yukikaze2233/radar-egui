@@ -134,10 +134,14 @@ pub fn text_faint() -> Color32 {
     )
 }
 
+/// Returns light text intended for overlay on dark backgrounds.
+/// Always uses dark-mode color regardless of theme, because the call sites
+/// render on surfaces that are independently dark (e.g. the minimap).
 pub fn text_on_dark() -> Color32 {
     Color32::from_rgb(0xcd, 0xd6, 0xf4)
 }
 
+/// Muted variant of [`text_on_dark`] for secondary text on dark surfaces.
 pub fn text_on_dark_muted() -> Color32 {
     Color32::from_rgb(0xa6, 0xad, 0xc8)
 }
@@ -190,6 +194,31 @@ pub fn surface2() -> Color32 {
 
 pub fn overlay0() -> Color32 {
     text_faint()
+}
+
+pub fn success_bg() -> Color32 {
+    pick(
+        Color32::from_rgb(0xe7, 0xf8, 0xee),
+        Color32::from_rgb(0x1e, 0x3a, 0x29),
+    )
+}
+
+pub fn error_bg() -> Color32 {
+    pick(
+        Color32::from_rgb(0xfe, 0xee, 0xee),
+        Color32::from_rgb(0x3a, 0x1e, 0x1e),
+    )
+}
+
+/// Returns a distinct color for each object-detection class (used in laser overlays).
+/// These are optimized for contrast on a dark video background.
+pub fn class_color(class_id: i32) -> Color32 {
+    match class_id {
+        0 => Color32::from_rgb(255, 0, 255),
+        1 => Color32::from_rgb(255, 50, 50),
+        2 => Color32::from_rgb(50, 100, 255),
+        _ => Color32::from_rgb(100, 255, 100),
+    }
 }
 
 pub fn subtext0() -> Color32 {

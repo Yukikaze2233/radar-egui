@@ -103,7 +103,7 @@ impl StatusPanels {
                 for (i, label) in labels.iter().enumerate() {
                     let active = info.occupation_status[i] != 0;
                     let fill = if active {
-                        egui::Color32::from_rgb(0xe7, 0xf8, 0xee)
+                        theme::success_bg()
                     } else {
                         theme::card_bg_muted()
                     };
