@@ -93,8 +93,17 @@ impl ScriptRunner {
     pub fn stop(&mut self) {
         if let Some(active) = self.active {
             if active.is_daemon() {
+                // 1. 优雅退出：通过 FIFO 通知 daemon
                 send_fifo("quit").ok();
-                std::thread::sleep(std::time::Duration::from_millis(200));
+                std::thread::sleep(std::time::Duration::from_millis(800));
+                // 2. 兜底强杀 (SIGKILL)：daemon 被 disown，wrapper kill 无效
+                for name in &["tool_competition", "tool_preview", "ffplay"] {
+                    let _ = Command::new("pkill")
+                        .args(["-9", "-f", name])
+                        .output();
+                }
+                // 3. 清理 FIFO，避免残留阻塞下次启动
+                let _ = std::fs::remove_file(LASER_FIFO);
             }
         }
         if let Some(mut child) = self.child.take() {
