@@ -32,6 +32,14 @@ enum EnemyColor {
     Auto,
 }
 
+struct PendingStartAll {
+    launch_at: std::time::Instant,
+    laser_script: LaserScript,
+    enemy_cmd: String,
+    stream_cmd: String,
+    record_cmd: String,
+}
+
 impl EnemyColor {
     fn label(&self) -> &str {
         match self {
@@ -73,11 +81,13 @@ pub struct RadarApp {
 
     laser_shared: Arc<Mutex<LaserObservation>>,
     laser_shutdown_tx: watch::Sender<bool>,
+    laser_listener_started: bool,
     laser_port: String,
     video_shared: Arc<Mutex<Option<VideoFrame>>>,
     video_shutdown_tx: watch::Sender<bool>,
 
     script_runner: ScriptRunner,
+    pending_start_all: Option<PendingStartAll>,
     enemy_color: EnemyColor,
     stream_on_start: bool,
     record_on_start: bool,
@@ -104,16 +114,8 @@ impl Default for RadarApp {
         });
 
         let laser_shared = Arc::new(Mutex::new(LaserObservation::default()));
-        let (laser_shutdown_tx, laser_shutdown_rx) = watch::channel(false);
-        let laser_shared_clone = laser_shared.clone();
+        let (laser_shutdown_tx, _laser_shutdown_rx) = watch::channel(false);
         let laser_port = 5001;
-        thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-            rt.block_on(async move {
-                udp_client::run_laser_client(laser_port, laser_shared_clone, laser_shutdown_rx)
-                    .await;
-            });
-        });
 
         let video_shared: Arc<Mutex<Option<VideoFrame>>> = Arc::new(Mutex::new(None));
         let (video_shutdown_tx, _video_shutdown_rx) = watch::channel(false);
@@ -139,10 +141,12 @@ impl Default for RadarApp {
             rerun_viz: RerunVisualizer::new(),
             laser_shared,
             laser_shutdown_tx,
+            laser_listener_started: false,
             laser_port: laser_port.to_string(),
             video_shared,
             video_shutdown_tx,
             script_runner: ScriptRunner::new(),
+            pending_start_all: None,
             enemy_color: EnemyColor::Auto,
             stream_on_start: true,
             record_on_start: false,
@@ -174,6 +178,26 @@ impl RadarApp {
     fn reconnect_laser(&mut self) {
         let _ = self.laser_shutdown_tx.send(true);
 
+        let (laser_shutdown_tx, laser_shutdown_rx) = watch::channel(false);
+        self.laser_shutdown_tx = laser_shutdown_tx;
+        self.laser_listener_started = true;
+
+        let laser_shared = self.laser_shared.clone();
+        let port: u16 = self.laser_port.parse().unwrap_or(5001);
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+            rt.block_on(async move {
+                udp_client::run_laser_client(port, laser_shared, laser_shutdown_rx).await;
+            });
+        });
+    }
+
+    fn ensure_laser_started(&mut self) {
+        if self.laser_listener_started {
+            return;
+        }
+
+        self.laser_listener_started = true;
         let (laser_shutdown_tx, laser_shutdown_rx) = watch::channel(false);
         self.laser_shutdown_tx = laser_shutdown_tx;
 
@@ -215,6 +239,47 @@ impl RadarApp {
             });
         });
     }
+
+    fn cancel_pending_start_all(&mut self) {
+        self.pending_start_all = None;
+    }
+
+    fn spawn_start_all_commands(enemy_cmd: String, stream_cmd: String, record_cmd: String) {
+        std::thread::spawn(move || {
+            for _ in 0..100 {
+                let ok = script_runner::send_fifo(&enemy_cmd).is_ok()
+                    && script_runner::send_fifo(&stream_cmd).is_ok()
+                    && script_runner::send_fifo(&record_cmd).is_ok();
+                if ok {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            log::warn!("Timed out sending config after Start All");
+        });
+    }
+
+    fn trigger_pending_start_all(&mut self) {
+        let Some(pending) = self.pending_start_all.take() else {
+            return;
+        };
+
+        if std::time::Instant::now() < pending.launch_at {
+            self.pending_start_all = Some(pending);
+            return;
+        }
+
+        if let Err(e) = self.script_runner.start(pending.laser_script) {
+            log::error!("Start All failed: {}", e);
+            return;
+        }
+
+        Self::spawn_start_all_commands(
+            pending.enemy_cmd,
+            pending.stream_cmd,
+            pending.record_cmd,
+        );
+    }
 }
 
 impl eframe::App for RadarApp {
@@ -225,6 +290,7 @@ impl eframe::App for RadarApp {
         self.ensure_logo_texture(ctx);
         self.update_connection_status();
         self.apply_theme(ctx);
+        self.trigger_pending_start_all();
 
         match self.active_tab {
             ActiveTab::Radar => {
@@ -295,6 +361,7 @@ impl eframe::App for RadarApp {
                     });
             }
             ActiveTab::Laser => {
+                self.ensure_laser_started();
                 self.ensure_video_started();
 
                 egui::SidePanel::right("laser_inspector")
@@ -358,6 +425,8 @@ impl eframe::App for RadarApp {
                     });
             }
         }
+
+        self.show_theme_toggle(ctx);
 
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
@@ -457,11 +526,141 @@ impl RadarApp {
                     .size(12.0),
             );
             ui.add_space(ui.available_height().max(0.0));
-            if ui.button(if self.dark_mode { "☼" } else { "☾" }).clicked() {
-                self.dark_mode = !self.dark_mode;
-            }
-            ui.add_space(8.0);
         });
+    }
+
+    fn show_theme_toggle(&mut self, ctx: &egui::Context) {
+        let accent = if self.dark_mode {
+            egui::Color32::from_rgb(0xc8, 0xd7, 0xff)
+        } else {
+            egui::Color32::from_rgb(0xf4, 0xb9, 0x42)
+        };
+        let hover_text = if self.dark_mode {
+            "Switch to light mode"
+        } else {
+            "Switch to dark mode"
+        };
+        let track_fill = theme::card_bg();
+        let track_stroke = egui::Stroke::new(1.0, Self::alpha(accent, 52));
+        let knob_fill = if self.dark_mode {
+            egui::Color32::from_rgb(0x3a, 0x44, 0x62)
+        } else {
+            egui::Color32::from_rgb(0xff, 0xef, 0xc2)
+        };
+        let knob_stroke = egui::Stroke::new(1.0, Self::alpha(accent, 92));
+        let animation = ctx.animate_bool(egui::Id::new("theme_toggle_knob"), self.dark_mode);
+        let sun_color = if self.dark_mode {
+            Self::alpha(theme::text_faint(), 170)
+        } else {
+            egui::Color32::from_rgb(0xf2, 0xb7, 0x21)
+        };
+        let moon_color = if self.dark_mode {
+            egui::Color32::from_rgb(0xd9, 0xe7, 0xff)
+        } else {
+            egui::Color32::from_rgb(0x6f, 0x7f, 0x9e)
+        };
+
+        egui::Area::new("global_theme_toggle".into())
+            .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(18.0, -18.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                let (rect, response) =
+                    ui.allocate_exact_size(egui::vec2(54.0, 28.0), egui::Sense::click());
+                let response = response.on_hover_text(hover_text);
+
+                let painter = ui.painter();
+                painter.rect_filled(rect, egui::CornerRadius::same(14), track_fill);
+                painter.rect_stroke(
+                    rect,
+                    egui::CornerRadius::same(14),
+                    track_stroke,
+                    egui::StrokeKind::Middle,
+                );
+
+                let knob_center_x = egui::lerp((rect.left() + 14.0)..=(rect.right() - 14.0), animation);
+                let knob_rect = egui::Rect::from_center_size(
+                    egui::pos2(knob_center_x, rect.center().y),
+                    egui::vec2(24.0, 24.0),
+                );
+                painter.rect_filled(knob_rect, egui::CornerRadius::same(12), knob_fill);
+                painter.rect_stroke(
+                    knob_rect,
+                    egui::CornerRadius::same(12),
+                    knob_stroke,
+                    egui::StrokeKind::Middle,
+                );
+
+                let sun_center = egui::pos2(rect.left() + 14.0, rect.center().y);
+                let moon_center = egui::pos2(rect.right() - 14.0, rect.center().y);
+
+                Self::draw_sun_icon(painter, sun_center, 4.0, sun_color);
+                Self::draw_moon_icon(
+                    painter,
+                    moon_center,
+                    5.0,
+                    moon_color,
+                    if self.dark_mode { knob_fill } else { track_fill },
+                );
+
+                if animation > 0.0 && animation < 1.0 {
+                    ctx.request_repaint();
+                }
+
+                if response.clicked() {
+                    self.dark_mode = !self.dark_mode;
+                }
+            });
+    }
+
+    fn draw_sun_icon(
+        painter: &egui::Painter,
+        center: egui::Pos2,
+        radius: f32,
+        color: egui::Color32,
+    ) {
+        painter.circle_filled(center, radius, color);
+        for i in 0..8 {
+            let angle = (i as f32) * std::f32::consts::TAU / 8.0;
+            let direction = egui::vec2(angle.cos(), angle.sin());
+            painter.line_segment(
+                [center + direction * (radius + 2.0), center + direction * (radius + 4.5)],
+                egui::Stroke::new(1.4, color),
+            );
+        }
+    }
+
+    fn draw_moon_icon(
+        painter: &egui::Painter,
+        center: egui::Pos2,
+        radius: f32,
+        color: egui::Color32,
+        cutout_fill: egui::Color32,
+    ) {
+        painter.circle_filled(center, radius, color);
+        painter.circle_filled(
+            center + egui::vec2(2.6, -0.4),
+            radius - 0.8,
+            cutout_fill,
+        );
+        painter.circle_stroke(
+            center + egui::vec2(-0.4, 0.0),
+            radius - 0.5,
+            egui::Stroke::new(1.0, Self::alpha(color, 110)),
+        );
+        painter.circle_filled(
+            center + egui::vec2(-3.0, -3.0),
+            0.8,
+            Self::alpha(color, 220),
+        );
+        painter.circle_filled(
+            center + egui::vec2(-1.4, -4.6),
+            0.45,
+            Self::alpha(color, 170),
+        );
+    }
+
+    fn alpha(color: egui::Color32, alpha: u8) -> egui::Color32 {
+        egui::Color32::from_rgba_premultiplied(color.r(), color.g(), color.b(), alpha)
     }
 
     fn show_mode_button(&mut self, ui: &mut egui::Ui, title: &str, tab: ActiveTab, subtitle: &str) {
@@ -592,9 +791,12 @@ impl RadarApp {
 
     fn show_laser_sidebar(&mut self, ui: &mut egui::Ui) {
         let laser_online = self.laser_shared.lock().is_ok_and(|obs| obs.is_online());
+        let laser_listening = self.laser_listener_started;
 
         Self::white_card(ui, "数据源", |ui| {
-            Self::status_chip(ui, laser_online, "Laser UDP");
+            Self::status_chip(ui, laser_listening, "Laser UDP Listening");
+            ui.add_space(8.0);
+            Self::status_chip(ui, laser_online, if laser_online { "Receiving" } else { "No recent packets" });
             ui.add_space(12.0);
             egui::Grid::new("laser_conn_grid")
                 .num_columns(2)
@@ -696,6 +898,7 @@ impl RadarApp {
                             )
                             .clicked()
                         {
+                            self.cancel_pending_start_all();
                             if let Err(e) = self.script_runner.start(*script) {
                                 log::error!("Failed to start {}: {}", label, e);
                             } else if script.is_daemon() {
@@ -747,6 +950,7 @@ impl RadarApp {
                     )
                     .clicked()
                 {
+                    self.cancel_pending_start_all();
                     self.script_runner.stop();
                 }
             }
@@ -756,6 +960,7 @@ impl RadarApp {
         Self::white_card(ui, "比赛进程", |ui| {
             let sdr_ok = self.script_runner.is_sdr_running();
             let unity_ok = self.script_runner.is_unity_running();
+            let start_all_pending = self.pending_start_all.is_some();
 
             // SDR 桥接
             ui.horizontal(|ui| {
@@ -771,6 +976,7 @@ impl RadarApp {
                             .add_sized([72.0, 24.0], egui::Button::new("Stop"))
                             .clicked()
                         {
+                            self.cancel_pending_start_all();
                             self.script_runner.stop_sdr();
                         }
                     } else {
@@ -778,6 +984,7 @@ impl RadarApp {
                             .add_sized([72.0, 24.0], egui::Button::new("Start"))
                             .clicked()
                         {
+                            self.cancel_pending_start_all();
                             if let Err(e) = self.script_runner.start_sdr() {
                                 log::error!("Failed to start SDR: {}", e);
                             }
@@ -819,9 +1026,13 @@ impl RadarApp {
             // Start All — 顺序启动 SDR → Laser
             ui.add_space(10.0);
             if ui
-                .add_sized(
-                    [ui.available_width(), 32.0],
-                    egui::Button::new("Start All (SDR → Laser Competition)"),
+                .add_enabled(
+                    !start_all_pending,
+                    egui::Button::new(if start_all_pending {
+                        "Starting..."
+                    } else {
+                        "Start All (SDR → Laser Competition)"
+                    }),
                 )
                 .clicked()
             {
@@ -838,23 +1049,17 @@ impl RadarApp {
                     "record off"
                 }
                 .to_owned();
-                if let Err(e) =
-                    self.script_runner
-                        .start_all(LaserScript::Competition)
-                {
+                self.cancel_pending_start_all();
+                if let Err(e) = self.script_runner.start_sdr() {
                     log::error!("Start All failed: {}", e);
                 } else {
-                    std::thread::spawn(move || {
-                        for _ in 0..100 {
-                            let ok = script_runner::send_fifo(&enemy_cmd).is_ok()
-                                && script_runner::send_fifo(&stream_cmd).is_ok()
-                                && script_runner::send_fifo(&record_cmd).is_ok();
-                            if ok {
-                                return;
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(50));
-                        }
-                        log::warn!("Timed out sending config after Start All");
+                    self.pending_start_all = Some(PendingStartAll {
+                        launch_at: std::time::Instant::now()
+                            + std::time::Duration::from_secs(1),
+                        laser_script: LaserScript::Competition,
+                        enemy_cmd,
+                        stream_cmd,
+                        record_cmd,
                     });
                 }
             }
@@ -869,6 +1074,7 @@ impl RadarApp {
                     )
                     .clicked()
                 {
+                    self.cancel_pending_start_all();
                     self.script_runner.stop_all();
                 }
             }
