@@ -177,19 +177,6 @@ impl ScriptRunner {
         self.unity_child.is_some()
     }
 
-    // ── 一键比赛 ────────────────────────────────────────────────────────────
-
-    /// 顺序启动 SDR → Laser (需外部传入 script 和 enemy_cmd)
-    /// 调用方应自行处理 Laser 启动和 enemy_color FIFO 发送
-    pub fn start_all(&mut self, laser_script: LaserScript) -> io::Result<()> {
-        self.start_sdr()?;
-
-        // 等 SDR 桥接连上 GNU Radio
-        std::thread::sleep(std::time::Duration::from_secs(1));
-
-        self.start(laser_script)
-    }
-
     /// 停止全部进程
     pub fn stop_all(&mut self) {
         self.stop();
