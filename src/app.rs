@@ -793,321 +793,321 @@ impl RadarApp {
         let laser_online = self.laser_shared.lock().is_ok_and(|obs| obs.is_online());
         let laser_listening = self.laser_listener_started;
 
-        Self::white_card(ui, "数据源", |ui| {
-            Self::status_chip(ui, laser_listening, "Laser UDP Listening");
-            ui.add_space(8.0);
-            Self::status_chip(ui, laser_online, if laser_online { "Receiving" } else { "No recent packets" });
-            ui.add_space(12.0);
-            egui::Grid::new("laser_conn_grid")
-                .num_columns(2)
-                .min_col_width(78.0)
-                .spacing([12.0, 10.0])
-                .show(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new("Port")
-                            .color(theme::text_muted())
-                            .size(13.0),
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                Self::white_card(ui, "数据源", |ui| {
+                    Self::status_chip(ui, laser_listening, "Laser UDP Listening");
+                    ui.add_space(8.0);
+                    Self::status_chip(
+                        ui,
+                        laser_online,
+                        if laser_online {
+                            "Receiving"
+                        } else {
+                            "No recent packets"
+                        },
                     );
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.laser_port)
-                            .desired_width(f32::INFINITY),
-                    );
-                    ui.end_row();
+                    ui.add_space(12.0);
+                    egui::Grid::new("laser_conn_grid")
+                        .num_columns(2)
+                        .min_col_width(78.0)
+                        .spacing([12.0, 10.0])
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new("Port")
+                                    .color(theme::text_muted())
+                                    .size(13.0),
+                            );
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.laser_port)
+                                    .desired_width(f32::INFINITY),
+                            );
+                            ui.end_row();
+                        });
+                    ui.add_space(12.0);
+                    if ui
+                        .add_sized(
+                            [ui.available_width(), 32.0],
+                            egui::Button::new("Reconnect laser listener"),
+                        )
+                        .clicked()
+                    {
+                        self.reconnect_laser();
+                    }
                 });
-            ui.add_space(12.0);
-            if ui
-                .add_sized(
-                    [ui.available_width(), 32.0],
-                    egui::Button::new("Reconnect laser listener"),
-                )
-                .clicked()
-            {
-                self.reconnect_laser();
-            }
-        });
 
-        ui.add_space(14.0);
-        Self::white_card(ui, "脚本控制", |ui| {
-            let running = self.script_runner.is_running();
-            let daemon_ok = script_runner::daemon_alive();
-            let active_label = self
-                .script_runner
-                .active()
-                .map(|s| s.label())
-                .unwrap_or("Idle");
+                ui.add_space(14.0);
+                Self::white_card(ui, "脚本控制", |ui| {
+                    let running = self.script_runner.is_running();
+                    let daemon_ok = script_runner::daemon_alive();
+                    let active_label = self
+                        .script_runner
+                        .active()
+                        .map(|s| s.label())
+                        .unwrap_or("Idle");
 
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new("状态:")
-                        .color(theme::text_muted())
-                        .size(13.0),
-                );
-                Self::status_chip(ui, running, active_label);
-            });
-            if daemon_ok && !running {
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new("daemon 存活 (可通过流控制发送命令)")
-                        .color(theme::text_faint())
-                        .size(11.0),
-                );
-            }
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new("敌方颜色:")
-                        .color(theme::text_muted())
-                        .size(13.0),
-                );
-                egui::ComboBox::from_id_salt("enemy_color")
-                    .selected_text(self.enemy_color.label())
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut self.enemy_color,
-                            EnemyColor::Red,
-                            "Red",
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("状态:")
+                                .color(theme::text_muted())
+                                .size(13.0),
                         );
-                        ui.selectable_value(
-                            &mut self.enemy_color,
-                            EnemyColor::Blue,
-                            "Blue",
-                        );
-                        ui.selectable_value(
-                            &mut self.enemy_color,
-                            EnemyColor::Auto,
-                            "Auto",
-                        );
+                        Self::status_chip(ui, running, active_label);
                     });
-            });
-            ui.add_space(4.0);
-            ui.checkbox(&mut self.stream_on_start, "启动时推流");
-            ui.checkbox(&mut self.record_on_start, "启动时内录");
-            ui.add_space(6.0);
-            let scripts = [
-                [LaserScript::Competition, LaserScript::Preview],
-                [LaserScript::Stream, LaserScript::Record],
-            ];
-            ui.columns(2, |columns| {
-                for (row_index, row) in scripts.iter().enumerate() {
-                    for (column, script) in columns.iter_mut().zip(row.iter()) {
-                        let label = script.label();
-                        if column
+                    if daemon_ok && !running {
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new("daemon 存活 (可通过流控制发送命令)")
+                                .color(theme::text_faint())
+                                .size(11.0),
+                        );
+                    }
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("敌方颜色:")
+                                .color(theme::text_muted())
+                                .size(13.0),
+                        );
+                        egui::ComboBox::from_id_salt("enemy_color")
+                            .selected_text(self.enemy_color.label())
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.enemy_color,
+                                    EnemyColor::Red,
+                                    "Red",
+                                );
+                                ui.selectable_value(
+                                    &mut self.enemy_color,
+                                    EnemyColor::Blue,
+                                    "Blue",
+                                );
+                                ui.selectable_value(
+                                    &mut self.enemy_color,
+                                    EnemyColor::Auto,
+                                    "Auto",
+                                );
+                            });
+                    });
+                    ui.add_space(4.0);
+                    ui.checkbox(&mut self.stream_on_start, "启动时推流");
+                    ui.checkbox(&mut self.record_on_start, "启动时内录");
+                    ui.add_space(6.0);
+                    let scripts = [
+                        [LaserScript::Competition, LaserScript::Preview],
+                        [LaserScript::Stream, LaserScript::Record],
+                    ];
+                    ui.columns(2, |columns| {
+                        for (row_index, row) in scripts.iter().enumerate() {
+                            for (column, script) in columns.iter_mut().zip(row.iter()) {
+                                let label = script.label();
+                                if column
+                                    .add_sized(
+                                        [column.available_width(), 30.0],
+                                        egui::Button::new(label),
+                                    )
+                                    .clicked()
+                                {
+                                    self.cancel_pending_start_all();
+                                    if let Err(e) = self.script_runner.start(*script) {
+                                        log::error!("Failed to start {}: {}", label, e);
+                                    } else if script.is_daemon() {
+                                        let enemy_cmd = self.enemy_color.fifo_cmd().to_owned();
+                                        let stream_cmd = if self.stream_on_start {
+                                            "stream on"
+                                        } else {
+                                            "stream off"
+                                        }
+                                        .to_owned();
+                                        let record_cmd = if self.record_on_start {
+                                            "record on"
+                                        } else {
+                                            "record off"
+                                        }
+                                        .to_owned();
+                                        std::thread::spawn(move || {
+                                            for _ in 0..100 {
+                                                let ok = script_runner::send_fifo(&enemy_cmd).is_ok()
+                                                    && script_runner::send_fifo(&stream_cmd).is_ok()
+                                                    && script_runner::send_fifo(&record_cmd).is_ok();
+                                                if ok {
+                                                    return;
+                                                }
+                                                std::thread::sleep(std::time::Duration::from_millis(
+                                                    50,
+                                                ));
+                                            }
+                                            log::warn!(
+                                                "Timed out sending launch config to daemon"
+                                            );
+                                        });
+                                    }
+                                }
+                            }
+                            if row_index + 1 < scripts.len() {
+                                for column in &mut columns[..] {
+                                    column.add_space(6.0);
+                                }
+                            }
+                        }
+                    });
+                    if running {
+                        ui.add_space(10.0);
+                        if ui
                             .add_sized(
-                                [column.available_width(), 30.0],
-                                egui::Button::new(label),
+                                [ui.available_width(), 30.0],
+                                egui::Button::new("Stop"),
                             )
                             .clicked()
                         {
                             self.cancel_pending_start_all();
-                            if let Err(e) = self.script_runner.start(*script) {
-                                log::error!("Failed to start {}: {}", label, e);
-                            } else if script.is_daemon() {
-                                let enemy_cmd = self.enemy_color.fifo_cmd().to_owned();
-                                let stream_cmd = if self.stream_on_start {
-                                    "stream on"
-                                } else {
-                                    "stream off"
-                                }
-                                .to_owned();
-                                let record_cmd = if self.record_on_start {
-                                    "record on"
-                                } else {
-                                    "record off"
-                                }
-                                .to_owned();
-                                std::thread::spawn(move || {
-                                    for _ in 0..100 {
-                                        let ok = script_runner::send_fifo(&enemy_cmd).is_ok()
-                                            && script_runner::send_fifo(&stream_cmd).is_ok()
-                                            && script_runner::send_fifo(&record_cmd).is_ok();
-                                        if ok {
-                                            return;
-                                        }
-                                        std::thread::sleep(std::time::Duration::from_millis(
-                                            50,
-                                        ));
-                                    }
-                                    log::warn!(
-                                        "Timed out sending launch config to daemon"
-                                    );
-                                });
-                            }
-                        }
-                    }
-                    if row_index + 1 < scripts.len() {
-                        for column in &mut columns[..] {
-                            column.add_space(6.0);
-                        }
-                    }
-                }
-            });
-            if running {
-                ui.add_space(10.0);
-                if ui
-                    .add_sized(
-                        [ui.available_width(), 30.0],
-                        egui::Button::new("Stop"),
-                    )
-                    .clicked()
-                {
-                    self.cancel_pending_start_all();
-                    self.script_runner.stop();
-                }
-            }
-        });
-
-        ui.add_space(14.0);
-        Self::white_card(ui, "比赛进程", |ui| {
-            let sdr_ok = self.script_runner.is_sdr_running();
-            let unity_ok = self.script_runner.is_unity_running();
-            let start_all_pending = self.pending_start_all.is_some();
-
-            // SDR 桥接
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new("SDR:")
-                        .color(theme::text_muted())
-                        .size(13.0),
-                );
-                Self::status_chip(ui, sdr_ok, if sdr_ok { "Running" } else { "Idle" });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if sdr_ok {
-                        if ui
-                            .add_sized([72.0, 24.0], egui::Button::new("Stop"))
-                            .clicked()
-                        {
-                            self.cancel_pending_start_all();
-                            self.script_runner.stop_sdr();
-                        }
-                    } else {
-                        if ui
-                            .add_sized([72.0, 24.0], egui::Button::new("Start"))
-                            .clicked()
-                        {
-                            self.cancel_pending_start_all();
-                            if let Err(e) = self.script_runner.start_sdr() {
-                                log::error!("Failed to start SDR: {}", e);
-                            }
+                            self.script_runner.stop();
                         }
                     }
                 });
-            });
-            ui.add_space(2.0);
 
-            // Unity RADAR
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new("Radar:")
-                        .color(theme::text_muted())
-                        .size(13.0),
-                );
-                Self::status_chip(ui, unity_ok, if unity_ok { "Running" } else { "Idle" });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if unity_ok {
-                        if ui
-                            .add_sized([72.0, 24.0], egui::Button::new("Stop"))
-                            .clicked()
-                        {
-                            self.script_runner.stop_unity();
-                        }
-                    } else {
-                        if ui
-                            .add_sized([72.0, 24.0], egui::Button::new("Start"))
-                            .clicked()
-                        {
-                            if let Err(e) = self.script_runner.start_unity() {
-                                log::error!("Failed to start Unity: {}", e);
+                ui.add_space(14.0);
+                Self::white_card(ui, "比赛进程", |ui| {
+                    let sdr_ok = self.script_runner.is_sdr_running();
+                    let unity_ok = self.script_runner.is_unity_running();
+                    let start_all_pending = self.pending_start_all.is_some();
+
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("SDR:")
+                                .color(theme::text_muted())
+                                .size(13.0),
+                        );
+                        Self::status_chip(ui, sdr_ok, if sdr_ok { "Running" } else { "Idle" });
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if sdr_ok {
+                                if ui
+                                    .add_sized([72.0, 24.0], egui::Button::new("Stop"))
+                                    .clicked()
+                                {
+                                    self.cancel_pending_start_all();
+                                    self.script_runner.stop_sdr();
+                                }
+                            } else if ui
+                                .add_sized([72.0, 24.0], egui::Button::new("Start"))
+                                .clicked()
+                            {
+                                self.cancel_pending_start_all();
+                                if let Err(e) = self.script_runner.start_sdr() {
+                                    log::error!("Failed to start SDR: {}", e);
+                                }
                             }
-                        }
-                    }
-                });
-            });
-
-            // Start All — 顺序启动 SDR → Laser
-            ui.add_space(10.0);
-            if ui
-                .add_enabled(
-                    !start_all_pending,
-                    egui::Button::new(if start_all_pending {
-                        "Starting..."
-                    } else {
-                        "Start All (SDR → Laser Competition)"
-                    }),
-                )
-                .clicked()
-            {
-                let enemy_cmd = self.enemy_color.fifo_cmd().to_owned();
-                let stream_cmd = if self.stream_on_start {
-                    "stream on"
-                } else {
-                    "stream off"
-                }
-                .to_owned();
-                let record_cmd = if self.record_on_start {
-                    "record on"
-                } else {
-                    "record off"
-                }
-                .to_owned();
-                self.cancel_pending_start_all();
-                if let Err(e) = self.script_runner.start_sdr() {
-                    log::error!("Start All failed: {}", e);
-                } else {
-                    self.pending_start_all = Some(PendingStartAll {
-                        launch_at: std::time::Instant::now()
-                            + std::time::Duration::from_secs(1),
-                        laser_script: LaserScript::Competition,
-                        enemy_cmd,
-                        stream_cmd,
-                        record_cmd,
+                        });
                     });
-                }
-            }
+                    ui.add_space(2.0);
 
-            // Stop All
-            if sdr_ok || unity_ok || self.script_runner.is_running() {
-                ui.add_space(6.0);
-                if ui
-                    .add_sized(
-                        [ui.available_width(), 30.0],
-                        egui::Button::new("Stop All"),
-                    )
-                    .clicked()
-                {
-                    self.cancel_pending_start_all();
-                    self.script_runner.stop_all();
-                }
-            }
-        });
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Radar:")
+                                .color(theme::text_muted())
+                                .size(13.0),
+                        );
+                        Self::status_chip(ui, unity_ok, if unity_ok { "Running" } else { "Idle" });
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if unity_ok {
+                                if ui
+                                    .add_sized([72.0, 24.0], egui::Button::new("Stop"))
+                                    .clicked()
+                                {
+                                    self.script_runner.stop_unity();
+                                }
+                            } else if ui
+                                .add_sized([72.0, 24.0], egui::Button::new("Start"))
+                                .clicked()
+                            {
+                                if let Err(e) = self.script_runner.start_unity() {
+                                    log::error!("Failed to start Unity: {}", e);
+                                }
+                            }
+                        });
+                    });
 
-        ui.add_space(14.0);
-        Self::white_card(ui, "流控制", |ui| {
-            ui.columns(2, |columns| {
-                if columns[0]
-                    .add_sized(
-                        [columns[0].available_width(), 32.0],
-                        egui::Button::new("Stream on"),
-                    )
-                    .clicked()
-                {
-                    self.send_laser_command("stream on");
-                }
-                if columns[1]
-                    .add_sized(
-                        [columns[1].available_width(), 32.0],
-                        egui::Button::new("Stream off"),
-                    )
-                    .clicked()
-                {
-                    self.send_laser_command("stream off");
-                }
-            });
-        });
+                    ui.add_space(10.0);
+                    if ui
+                        .add_enabled(
+                            !start_all_pending,
+                            egui::Button::new(if start_all_pending {
+                                "Starting..."
+                            } else {
+                                "Start All (SDR → Laser Competition)"
+                            }),
+                        )
+                        .clicked()
+                    {
+                        let enemy_cmd = self.enemy_color.fifo_cmd().to_owned();
+                        let stream_cmd = if self.stream_on_start {
+                            "stream on"
+                        } else {
+                            "stream off"
+                        }
+                        .to_owned();
+                        let record_cmd = if self.record_on_start {
+                            "record on"
+                        } else {
+                            "record off"
+                        }
+                        .to_owned();
+                        self.cancel_pending_start_all();
+                        if let Err(e) = self.script_runner.start_sdr() {
+                            log::error!("Start All failed: {}", e);
+                        } else {
+                            self.pending_start_all = Some(PendingStartAll {
+                                launch_at: std::time::Instant::now()
+                                    + std::time::Duration::from_secs(1),
+                                laser_script: LaserScript::Competition,
+                                enemy_cmd,
+                                stream_cmd,
+                                record_cmd,
+                            });
+                        }
+                    }
 
-        ui.add_space(14.0);
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
+                    if sdr_ok || unity_ok || self.script_runner.is_running() {
+                        ui.add_space(6.0);
+                        if ui
+                            .add_sized(
+                                [ui.available_width(), 30.0],
+                                egui::Button::new("Stop All"),
+                            )
+                            .clicked()
+                        {
+                            self.cancel_pending_start_all();
+                            self.script_runner.stop_all();
+                        }
+                    }
+                });
+
+                ui.add_space(14.0);
+                Self::white_card(ui, "流控制", |ui| {
+                    ui.columns(2, |columns| {
+                        if columns[0]
+                            .add_sized(
+                                [columns[0].available_width(), 32.0],
+                                egui::Button::new("Stream on"),
+                            )
+                            .clicked()
+                        {
+                            self.send_laser_command("stream on");
+                        }
+                        if columns[1]
+                            .add_sized(
+                                [columns[1].available_width(), 32.0],
+                                egui::Button::new("Stream off"),
+                            )
+                            .clicked()
+                        {
+                            self.send_laser_command("stream off");
+                        }
+                    });
+                });
+
+                ui.add_space(14.0);
                 LaserPanel::new(self.laser_shared.clone(), self.video_shared.clone())
                     .show_analysis_sidebar(ui);
             });
