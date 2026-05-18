@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::sync::watch;
 
@@ -14,6 +14,7 @@ const SHM_MAGIC: u32 = 0x4C465248;
 const HEADER_SIZE: usize = 64;
 const MAX_DIMENSION: u32 = 4096;
 const POLL_INTERVAL: Duration = Duration::from_millis(2);
+const STALE_FRAME_TIMEOUT: Duration = Duration::from_millis(800);
 
 struct ShmMapping {
     ptr: *mut u8,
@@ -160,6 +161,9 @@ pub async fn run_video_client(
                 m
             }
             Err(e) => {
+                if let Ok(mut state) = shared.lock() {
+                    *state = None;
+                }
                 log::warn!("[shm] open failed: {} (retry in {:?})", e, backoff);
                 tokio::select! {
                     _ = tokio::time::sleep(backoff) => {}
@@ -174,6 +178,7 @@ pub async fn run_video_client(
         let header = ShmHeader { ptr: mapping.ptr };
         let frame_size = (mapping.width * mapping.height * 3) as usize;
         let mut last_seq = header.frame_seq();
+        let mut last_frame_update = Instant::now();
 
         let mut interval = tokio::time::interval(POLL_INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -186,9 +191,17 @@ pub async fn run_video_client(
 
             let seq = header.frame_seq();
             if seq == last_seq {
+                if last_frame_update.elapsed() > STALE_FRAME_TIMEOUT {
+                    log::warn!(
+                        "[shm] frame sequence stalled for {:?}, remapping",
+                        STALE_FRAME_TIMEOUT
+                    );
+                    break;
+                }
                 continue;
             }
             last_seq = seq;
+            last_frame_update = Instant::now();
 
             if header.magic() != SHM_MAGIC {
                 log::warn!("[shm] magic mismatch, producer restarted");
@@ -223,6 +236,9 @@ pub async fn run_video_client(
         }
 
         log::warn!("[shm] disconnected, reconnecting...");
+        if let Ok(mut state) = shared.lock() {
+            *state = None;
+        }
         drop(mapping);
         tokio::select! {
             _ = tokio::time::sleep(backoff) => {}
