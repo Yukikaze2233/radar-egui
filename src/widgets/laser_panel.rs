@@ -236,7 +236,7 @@ fn draw_overlay(
     scale_x: f32,
     scale_y: f32,
 ) {
-    const DETECTION_THRESHOLD: f32 = 0.25;
+    const DETECTION_THRESHOLD: f32 = 0.35;
 
     for cand in &obs.candidates {
         if cand.score < DETECTION_THRESHOLD {
