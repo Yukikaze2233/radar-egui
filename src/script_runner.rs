@@ -141,18 +141,17 @@ impl ScriptRunner {
 
     // ── SDR ──────────────────────────────────────────────────────────────────
 
-    /// 启动 SDR 数据桥接 (tcp_launch.py)
+    /// 启动 SDR 数据桥接 (thread_init.py)
     ///
-    /// cd 到 tcp/ 子目录解决 `from tcp_comm` 同级导入，
-    /// PYTHONPATH=.. 解决 `from parser.xxx` 跨目录导入。
+    /// 从 SDR 仓库根目录运行，PYTHONPATH=. 解决 parser/tcp 导入。
     pub fn start_sdr(&mut self) -> io::Result<()> {
         self.stop_sdr();
 
-        let script_dir = PathBuf::from(SDR_REPO).join("tcp");
+        let sdr_dir = PathBuf::from(SDR_REPO);
         let child = Command::new("python3")
-            .arg("tcp_launch.py")
-            .current_dir(&script_dir)
-            .env("PYTHONPATH", "..")
+            .arg("thread_init.py")
+            .current_dir(&sdr_dir)
+            .env("PYTHONPATH", ".")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .stdin(Stdio::null())
