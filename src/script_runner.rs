@@ -75,7 +75,24 @@ impl ScriptRunner {
     // ── Laser ────────────────────────────────────────────────────────────────
 
     pub fn start(&mut self, script: LaserScript) -> io::Result<()> {
-        self.stop();
+        // 拿走旧状态，后台清理（不阻塞 UI）
+        let old_active = self.active.take();
+        let old_child = self.child.take();
+
+        if let Some(active) = old_active {
+            if active.is_daemon() {
+                let _ = std::thread::spawn(move || {
+                    send_fifo("quit").ok();
+                });
+            }
+        }
+        if let Some(mut child) = old_child {
+            let _ = std::thread::spawn(move || {
+                let _ = child.kill();
+                let _ = child.wait();
+                log::info!("Stopped old laser script wrapper");
+            });
+        }
 
         let path = PathBuf::from(LASER_SCRIPTS_DIR).join(script.script_name());
         let child = Command::new(&path)
