@@ -74,7 +74,7 @@ impl ScriptRunner {
 
     // ── Laser ────────────────────────────────────────────────────────────────
 
-    pub fn start(&mut self, script: LaserScript) -> io::Result<()> {
+    pub fn start(&mut self, script: LaserScript, device: &str) -> io::Result<()> {
         // 拿走旧状态，后台清理（不阻塞 UI）
         let old_active = self.active.take();
         let old_child = self.child.take();
@@ -96,6 +96,7 @@ impl ScriptRunner {
 
         let path = PathBuf::from(LASER_SCRIPTS_DIR).join(script.script_name());
         let child = Command::new(&path)
+            .env("LASER_CAMERA_DEVICE", device)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .stdin(Stdio::null())

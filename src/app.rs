@@ -35,6 +35,7 @@ enum EnemyColor {
 struct PendingStartAll {
     launch_at: std::time::Instant,
     laser_script: LaserScript,
+    camera_device: String,
     enemy_cmd: String,
     stream_cmd: String,
     record_cmd: String,
@@ -88,6 +89,7 @@ pub struct RadarApp {
 
     script_runner: ScriptRunner,
     pending_start_all: Option<PendingStartAll>,
+    camera_device: String,
     enemy_color: EnemyColor,
     stream_on_start: bool,
     record_on_start: bool,
@@ -147,6 +149,7 @@ impl Default for RadarApp {
             video_shutdown_tx,
             script_runner: ScriptRunner::new(),
             pending_start_all: None,
+            camera_device: "/dev/laser_capture".to_string(),
             enemy_color: EnemyColor::Auto,
             stream_on_start: true,
             record_on_start: false,
@@ -269,7 +272,7 @@ impl RadarApp {
             return;
         }
 
-        if let Err(e) = self.script_runner.start(pending.laser_script) {
+        if let Err(e) = self.script_runner.start(pending.laser_script, &pending.camera_device) {
             log::error!("Start All failed: {}", e);
             return;
         }
@@ -824,6 +827,16 @@ impl RadarApp {
                                     .desired_width(f32::INFINITY),
                             );
                             ui.end_row();
+                            ui.label(
+                                egui::RichText::new("Camera")
+                                    .color(theme::text_muted())
+                                    .size(13.0),
+                            );
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.camera_device)
+                                    .desired_width(f32::INFINITY),
+                            );
+                            ui.end_row();
                         });
                     ui.add_space(12.0);
                     if ui
@@ -910,7 +923,7 @@ impl RadarApp {
                                     .clicked()
                                 {
                                     self.cancel_pending_start_all();
-                                    if let Err(e) = self.script_runner.start(*script) {
+                                    if let Err(e) = self.script_runner.start(*script, &self.camera_device) {
                                         log::error!("Failed to start {}: {}", label, e);
                                     } else if script.is_daemon() {
                                         let enemy_cmd = self.enemy_color.fifo_cmd().to_owned();
@@ -1057,11 +1070,12 @@ impl RadarApp {
                         if let Err(e) = self.script_runner.start_sdr() {
                             log::error!("Start All failed: {}", e);
                         } else {
-                            self.pending_start_all = Some(PendingStartAll {
-                                launch_at: std::time::Instant::now()
-                                    + std::time::Duration::from_secs(1),
-                                laser_script: LaserScript::Competition,
-                                enemy_cmd,
+                    self.pending_start_all = Some(PendingStartAll {
+                        launch_at: std::time::Instant::now()
+                            + std::time::Duration::from_secs(1),
+                        laser_script: LaserScript::Competition,
+                        camera_device: self.camera_device.clone(),
+                        enemy_cmd,
                                 stream_cmd,
                                 record_cmd,
                             });
