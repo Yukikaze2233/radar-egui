@@ -6,10 +6,10 @@
 //!   - Unity RADAR     (RADAR_APP/RADAR.x86_64)
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-const LASER_SCRIPTS_DIR: &str = "../laser_guidance/.script";
+const LASER_GUIDANCE_ROOT_ENV: &str = "LASER_GUIDANCE_ROOT";
 const LASER_FIFO: &str = "/tmp/laser_cmd";
 const SDR_REPO: &str = "../alliance_radar_sdr";
 const UNITY_BIN: &str = "../RADAR_APP/RADAR.x86_64";
@@ -94,15 +94,23 @@ impl ScriptRunner {
             });
         }
 
-        let path = PathBuf::from(LASER_SCRIPTS_DIR).join(script.script_name());
+        let laser_root = laser_guidance_root()?;
+        let path = laser_root.join(".script").join(script.script_name());
         let child = Command::new(&path)
+            .current_dir(&laser_root)
             .env("LASER_CAMERA_DEVICE", device)
+            .env("LASER_HEADLESS", "1")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .stdin(Stdio::null())
             .spawn()?;
 
-        log::info!("Started laser script: {:?} (pid={})", script, child.id());
+        log::info!(
+            "Started laser script: {:?} from {} (pid={})",
+            script,
+            laser_root.display(),
+            child.id()
+        );
         self.child = Some(child);
         self.active = Some(script);
         Ok(())
@@ -116,9 +124,7 @@ impl ScriptRunner {
                 std::thread::sleep(std::time::Duration::from_millis(800));
                 // 2. 兜底强杀 (SIGKILL)：daemon 被 disown，wrapper kill 无效
                 for name in &["tool_competition", "tool_preview", "ffplay"] {
-                    let _ = Command::new("pkill")
-                        .args(["-9", "-f", name])
-                        .output();
+                    let _ = Command::new("pkill").args(["-9", "-f", name]).output();
                 }
                 // 3. 清理 FIFO，避免残留阻塞下次启动
                 let _ = std::fs::remove_file(LASER_FIFO);
@@ -218,6 +224,48 @@ impl Drop for ScriptRunner {
 }
 
 // ── 静态辅助函数 ────────────────────────────────────────────────────────────
+
+fn laser_guidance_root() -> io::Result<PathBuf> {
+    if let Some(root) = std::env::var_os(LASER_GUIDANCE_ROOT_ENV) {
+        return valid_laser_root(PathBuf::from(root));
+    }
+
+    let mut candidates = Vec::new();
+    if let Some(manifest_dir) = option_env!("CARGO_MANIFEST_DIR") {
+        let manifest_dir = Path::new(manifest_dir);
+        candidates.push(manifest_dir.join("../../laser_guidance"));
+        candidates.push(manifest_dir.join("../laser_guidance"));
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("../../laser_guidance"));
+        candidates.push(cwd.join("../laser_guidance"));
+    }
+
+    for candidate in candidates {
+        if let Ok(root) = valid_laser_root(candidate) {
+            return Ok(root);
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!(
+            "laser_guidance root not found; set {LASER_GUIDANCE_ROOT_ENV} to the laser_guidance repo"
+        ),
+    ))
+}
+
+fn valid_laser_root(path: PathBuf) -> io::Result<PathBuf> {
+    let script_dir = path.join(".script");
+    if script_dir.join("competition").is_file() {
+        path.canonicalize()
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("{} does not contain .script/competition", path.display()),
+        ))
+    }
+}
 
 pub fn daemon_alive() -> bool {
     use std::os::unix::fs::FileTypeExt;
