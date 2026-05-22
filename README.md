@@ -33,17 +33,11 @@ cd ~/radar
 
 ## 截图
 
-### Radar HUD
+### 集成预览
 
-![Radar HUD](docs/radar-hud.png)
+![集成预览 1](docs/integrated-preview-1.png)
 
-### Laser HUD
-
-![Laser HUD](docs/laser-hud.png)
-
-### 集成概览
-
-![HUD Overview](docs/hud-overview.png)
+![集成预览 2](docs/integrated-preview-2.png)
 
 ## UI 布局
 
