@@ -30,9 +30,9 @@ enum EnemyColor {
     Red,
     Blue,
     Auto,
-}
 
 struct PendingStartAll {
+}
     launch_at: std::time::Instant,
     laser_script: LaserScript,
     camera_device: String,
@@ -55,6 +55,13 @@ impl EnemyColor {
             EnemyColor::Red => "enemy red",
             EnemyColor::Blue => "enemy blue",
             EnemyColor::Auto => "enemy auto",
+        }
+    }
+
+    fn sdr_arg(&self) -> &str {
+        match self {
+            EnemyColor::Red | EnemyColor::Auto => "red",
+            EnemyColor::Blue => "blue",
         }
     }
 }
@@ -1007,7 +1014,7 @@ impl RadarApp {
                                 .clicked()
                             {
                                 self.cancel_pending_start_all();
-                                if let Err(e) = self.script_runner.start_sdr() {
+                                if let Err(e) = self.script_runner.start_sdr(self.enemy_color.sdr_arg()) {
                                     log::error!("Failed to start SDR: {}", e);
                                 }
                             }
@@ -1067,7 +1074,7 @@ impl RadarApp {
                         }
                         .to_owned();
                         self.cancel_pending_start_all();
-                        if let Err(e) = self.script_runner.start_sdr() {
+                        if let Err(e) = self.script_runner.start_sdr(self.enemy_color.sdr_arg()) {
                             log::error!("Start All failed: {}", e);
                         } else {
                     self.pending_start_all = Some(PendingStartAll {

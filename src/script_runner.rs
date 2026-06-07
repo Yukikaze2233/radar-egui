@@ -151,12 +151,12 @@ impl ScriptRunner {
     /// 启动 SDR 数据桥接 (thread_init.py)
     ///
     /// 从 SDR 仓库根目录运行，PYTHONPATH=. 解决 parser/tcp 导入。
-    pub fn start_sdr(&mut self) -> io::Result<()> {
+    pub fn start_sdr(&mut self, enemy_color: &str) -> io::Result<()> {
         self.stop_sdr();
 
         let sdr_dir = PathBuf::from(SDR_REPO);
         let child = Command::new("python3")
-            .arg("thread_init.py")
+            .args(["thread_init.py", "--enemySide", enemy_color])
             .current_dir(&sdr_dir)
             .env("PYTHONPATH", ".")
             .stdout(Stdio::null())
@@ -164,7 +164,7 @@ impl ScriptRunner {
             .stdin(Stdio::null())
             .spawn()?;
 
-        log::info!("Started SDR bridge (pid={})", child.id());
+        log::info!("Started SDR bridge (pid={}) with enemy={enemy_color}", child.id());
         self.sdr_child = Some(child);
         Ok(())
     }
