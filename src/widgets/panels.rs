@@ -1,22 +1,18 @@
 use egui::{Color32, RichText, Vec2};
-use std::sync::{Arc, Mutex};
 
 use crate::protocol::RoboMasterSignalInfo;
 use crate::theme;
 
-pub struct StatusPanels {
-    shared: Arc<Mutex<RoboMasterSignalInfo>>,
-}
+pub struct StatusPanels;
 
 impl StatusPanels {
-    pub fn new(shared: Arc<Mutex<RoboMasterSignalInfo>>) -> Self {
-        Self { shared }
+    pub fn new() -> Self {
+        Self
     }
 
-    pub fn show(&self, ui: &mut egui::Ui) {
-        let info = match self.shared.lock() {
-            Ok(state) => state.clone(),
-            Err(_) => return,
+    pub fn show(&self, ui: &mut egui::Ui, info: Option<&RoboMasterSignalInfo>) {
+        let Some(info) = info else {
+            return;
         };
 
         self.card(
