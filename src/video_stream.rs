@@ -7,6 +7,7 @@ pub struct VideoFrame {
     pub data: Vec<u8>,
     pub width: u32,
     pub height: u32,
+    pub seq: u32,
 }
 
 const SHM_NAME: &str = "/laser_frame";
@@ -95,8 +96,7 @@ fn open_shm() -> Result<ShmMapping, String> {
         }
         return Err(format!(
             "bad magic: 0x{:08X} (expected 0x{:08X})",
-            observed_magic,
-            SHM_MAGIC
+            observed_magic, SHM_MAGIC
         ));
     }
 
@@ -223,12 +223,14 @@ pub async fn run_video_client(
                             && existing.height == mapping.height =>
                     {
                         existing.data.copy_from_slice(frame_data);
+                        existing.seq = seq;
                     }
                     _ => {
                         *state = Some(VideoFrame {
                             data: frame_data.to_vec(),
                             width: mapping.width,
                             height: mapping.height,
+                            seq,
                         });
                     }
                 }
