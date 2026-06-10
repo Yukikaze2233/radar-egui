@@ -1,6 +1,6 @@
 use egui::{Color32, Pos2, Stroke, Vec2};
 
-use crate::protocol::RoboMasterSignalInfo;
+use crate::radar::protocol::RoboMasterSignalInfo;
 use crate::theme;
 
 pub struct MinimapWidget;

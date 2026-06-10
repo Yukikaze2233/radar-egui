@@ -3,8 +3,8 @@ use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::sync::watch;
 
-use crate::laser_protocol;
-use crate::state_snapshots::LaserObservationWriter;
+use super::protocol;
+use crate::state::LaserObservationWriter;
 
 pub async fn run_laser_client(
     port: u16,
@@ -31,7 +31,7 @@ pub async fn run_laser_client(
                 match result {
                     Ok((len, src)) => {
                         log::debug!("UDP received {} bytes from {}", len, src);
-                        match laser_protocol::parse_laser_packet(&buf[..len]) {
+                        match protocol::parse_laser_packet(&buf[..len]) {
                             Some(obs) => {
                                 log::debug!("Parsed: detected={}, center=[{:.1}, {:.1}], candidates={}",
                                     obs.detected, obs.center[0], obs.center[1], obs.candidates.len());

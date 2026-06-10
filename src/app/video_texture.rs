@@ -1,4 +1,4 @@
-use crate::video_stream::VideoFrameReader;
+use crate::laser::video::VideoFrameReader;
 
 #[derive(Default)]
 pub(super) struct VideoTextureCache {

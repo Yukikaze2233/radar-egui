@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::laser_protocol::LaserObservation;
-use crate::protocol::RoboMasterSignalInfo;
+use crate::laser::protocol::LaserObservation;
+use crate::radar::protocol::RoboMasterSignalInfo;
 
 #[derive(Default)]
 struct RadarFeedState {

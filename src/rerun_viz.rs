@@ -1,4 +1,4 @@
-use crate::protocol::RoboMasterSignalInfo;
+use crate::radar::protocol::RoboMasterSignalInfo;
 
 #[cfg(feature = "rerun")]
 use rerun as rr;

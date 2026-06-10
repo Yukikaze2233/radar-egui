@@ -1,6 +1,6 @@
 use super::{ActiveTab, ConnectionStatus, EnemyColor, RadarApp};
-use crate::script_runner::LaserScript;
-use crate::state_snapshots::{LaserSnapshot, RadarSnapshot};
+use crate::services::script_runner::LaserScript;
+use crate::state::{LaserSnapshot, RadarSnapshot};
 use crate::theme;
 use crate::widgets::{LaserPanel, StatusPanels};
 

@@ -4,9 +4,9 @@ use self::video_texture::VideoTextureCache;
 use crate::rerun_viz::RerunVisualizer;
 use crate::runtime::{LaserRuntime, RadarRuntime, VideoRuntime};
 use crate::services::process_control::ProcessControl;
-use crate::state_snapshots::{LaserObservationReader, RadarFeedReader};
+use crate::state::{LaserObservationReader, RadarFeedReader};
 use crate::theme;
-use crate::video_stream::VideoFrameReader;
+use crate::laser::video::VideoFrameReader;
 use crate::widgets::{LaserPanel, MinimapWidget};
 
 mod assets;

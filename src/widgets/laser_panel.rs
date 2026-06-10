@@ -1,6 +1,6 @@
 use egui::{Color32, Pos2, RichText, Vec2};
 
-use crate::laser_protocol::LaserObservation;
+use crate::laser::protocol::LaserObservation;
 use crate::theme;
 
 pub struct LaserPanel;

@@ -1,5 +1,5 @@
 use super::{ConnectionStatus, RadarApp};
-use crate::state_snapshots::RadarSnapshot;
+use crate::state::RadarSnapshot;
 
 impl RadarApp {
     pub(super) fn update_connection_status(&mut self, snapshot: Option<&RadarSnapshot>) {

@@ -4,8 +4,8 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::watch;
 
-use crate::protocol;
-use crate::state_snapshots::RadarFeedWriter;
+use super::protocol;
+use crate::state::RadarFeedWriter;
 
 /// Connect to SDR signal stream at `addr`, parse incoming data, and update shared state.
 ///

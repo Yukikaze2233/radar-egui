@@ -1,15 +1,12 @@
 mod app;
-mod laser_protocol;
-mod protocol;
+mod laser;
+mod radar;
 mod rerun_viz;
 mod runtime;
-mod script_runner;
+mod serial;
 mod services;
-mod state_snapshots;
-mod tcp_client;
+mod state;
 mod theme;
-mod udp_client;
-mod video_stream;
 mod widgets;
 
 fn main() -> eframe::Result {

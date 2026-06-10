@@ -3,10 +3,10 @@ use std::thread;
 
 use tokio::sync::watch;
 
-use crate::state_snapshots::{LaserObservationWriter, RadarFeedWriter};
-use crate::tcp_client;
-use crate::udp_client;
-use crate::video_stream::{self, VideoFrameWriter};
+use crate::laser::observer;
+use crate::laser::video::{self, VideoFrameWriter};
+use crate::radar::client;
+use crate::state::{LaserObservationWriter, RadarFeedWriter};
 
 fn spawn_runtime_task<M, F>(make_future: M)
 where
@@ -34,7 +34,7 @@ impl RadarRuntime {
         };
 
         spawn_runtime_task(move || async move {
-            tcp_client::run_signal_client(&addr, writer, shutdown_rx).await;
+            client::run_signal_client(&addr, writer, shutdown_rx).await;
         });
 
         runtime
@@ -88,7 +88,7 @@ impl LaserRuntime {
         let writer = self.writer.clone();
 
         spawn_runtime_task(move || async move {
-            udp_client::run_laser_client(port, writer, shutdown_rx).await;
+            observer::run_laser_client(port, writer, shutdown_rx).await;
         });
     }
 }
@@ -123,7 +123,7 @@ impl VideoRuntime {
         let writer = self.writer.clone();
 
         spawn_runtime_task(move || async move {
-            video_stream::run_video_client(writer, shutdown_rx).await;
+            video::run_video_client(writer, shutdown_rx).await;
         });
     }
 }

@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::script_runner::{self, LaserScript, ScriptRunner};
+use super::script_runner::{self, LaserScript, ScriptRunner};
 
 struct PendingStartAll {
     launch_at: std::time::Instant,
