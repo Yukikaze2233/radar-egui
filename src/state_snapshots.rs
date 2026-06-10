@@ -64,7 +64,8 @@ impl RadarFeedReader {
 
     pub fn reset_metadata(&self) {
         if let Ok(mut state) = self.inner.lock() {
-            state.metadata = RadarFeedMetadata::default();
+            state.metadata.packet_count = 0;
+            state.metadata.last_packet_at = None;
         }
     }
 }
