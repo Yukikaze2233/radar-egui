@@ -4,6 +4,22 @@ use std::time::Instant;
 use crate::laser_protocol::LaserObservation;
 use crate::protocol::RoboMasterSignalInfo;
 
+#[derive(Default)]
+struct RadarFeedState {
+    signal: RoboMasterSignalInfo,
+    metadata: RadarFeedMetadata,
+}
+
+#[derive(Clone)]
+pub struct RadarFeedReader {
+    inner: Arc<Mutex<RadarFeedState>>,
+}
+
+#[derive(Clone)]
+pub struct RadarFeedWriter {
+    inner: Arc<Mutex<RadarFeedState>>,
+}
+
 #[derive(Clone, Default)]
 pub struct RadarFeedMetadata {
     pub packet_count: u64,
@@ -19,37 +35,104 @@ impl RadarFeedMetadata {
     }
 }
 
+impl Default for RadarFeedReader {
+    fn default() -> Self {
+        Self::new_pair().0
+    }
+}
+
+impl RadarFeedReader {
+    pub fn new_pair() -> (Self, RadarFeedWriter) {
+        let inner = Arc::new(Mutex::new(RadarFeedState::default()));
+
+        (
+            Self {
+                inner: inner.clone(),
+            },
+            RadarFeedWriter { inner },
+        )
+    }
+
+    pub fn snapshot(&self) -> Option<RadarSnapshot> {
+        let state = self.inner.lock().ok()?;
+
+        Some(RadarSnapshot {
+            signal: state.signal.clone(),
+            metadata: state.metadata.clone(),
+        })
+    }
+
+    pub fn reset_metadata(&self) {
+        if let Ok(mut state) = self.inner.lock() {
+            state.metadata = RadarFeedMetadata::default();
+        }
+    }
+}
+
+impl RadarFeedWriter {
+    pub fn publish(&self, signal: RoboMasterSignalInfo) {
+        if let Ok(mut state) = self.inner.lock() {
+            state.signal = signal;
+            state.metadata.mark_packet();
+        }
+    }
+}
+
 pub struct RadarSnapshot {
     pub signal: RoboMasterSignalInfo,
     pub metadata: RadarFeedMetadata,
 }
 
-impl RadarSnapshot {
-    pub fn capture(
-        shared_signal: &Arc<Mutex<RoboMasterSignalInfo>>,
-        shared_metadata: &Arc<Mutex<RadarFeedMetadata>>,
-    ) -> Option<Self> {
-        let signal = shared_signal.lock().ok()?.clone();
-        let metadata = shared_metadata.lock().ok()?.clone();
+#[derive(Clone)]
+pub struct LaserObservationReader {
+    inner: Arc<Mutex<LaserObservation>>,
+}
 
-        Some(Self { signal, metadata })
+#[derive(Clone)]
+pub struct LaserObservationWriter {
+    inner: Arc<Mutex<LaserObservation>>,
+}
+
+impl Default for LaserObservationReader {
+    fn default() -> Self {
+        Self::new_pair().0
+    }
+}
+
+impl LaserObservationReader {
+    pub fn new_pair() -> (Self, LaserObservationWriter) {
+        let inner = Arc::new(Mutex::new(LaserObservation::default()));
+
+        (
+            Self {
+                inner: inner.clone(),
+            },
+            LaserObservationWriter { inner },
+        )
+    }
+
+    pub fn snapshot(&self) -> Option<LaserSnapshot> {
+        self.inner.lock().ok().map(|state| {
+            let observation = state.clone();
+            let online = observation.is_online();
+
+            LaserSnapshot {
+                observation,
+                online,
+            }
+        })
+    }
+}
+
+impl LaserObservationWriter {
+    pub fn publish(&self, observation: LaserObservation) {
+        if let Ok(mut state) = self.inner.lock() {
+            *state = observation;
+        }
     }
 }
 
 pub struct LaserSnapshot {
     pub observation: LaserObservation,
     pub online: bool,
-}
-
-impl LaserSnapshot {
-    pub fn capture(shared: &Arc<Mutex<LaserObservation>>) -> Option<Self> {
-        shared.lock().ok().map(|state| {
-            let observation = state.clone();
-            let online = observation.is_online();
-            Self {
-                observation,
-                online,
-            }
-        })
-    }
 }

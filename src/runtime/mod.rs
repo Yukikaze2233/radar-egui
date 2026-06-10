@@ -1,15 +1,12 @@
 use std::future::Future;
-use std::sync::{Arc, Mutex};
 use std::thread;
 
 use tokio::sync::watch;
 
-use crate::laser_protocol::LaserObservation;
-use crate::protocol::RoboMasterSignalInfo;
-use crate::state_snapshots::RadarFeedMetadata;
+use crate::state_snapshots::{LaserObservationWriter, RadarFeedWriter};
 use crate::tcp_client;
 use crate::udp_client;
-use crate::video_stream::{self, VideoFrame};
+use crate::video_stream::{self, VideoFrameWriter};
 
 fn spawn_runtime_task<M, F>(make_future: M)
 where
@@ -24,76 +21,74 @@ where
 
 pub struct RadarRuntime {
     shutdown_tx: watch::Sender<bool>,
+    writer: RadarFeedWriter,
 }
 
 impl RadarRuntime {
-    pub fn start(
-        addr: impl Into<String>,
-        shared: Arc<Mutex<RoboMasterSignalInfo>>,
-        metadata: Arc<Mutex<RadarFeedMetadata>>,
-    ) -> Self {
+    pub fn start(addr: impl Into<String>, writer: RadarFeedWriter) -> Self {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let addr = addr.into();
+        let runtime = Self {
+            shutdown_tx,
+            writer: writer.clone(),
+        };
+
         spawn_runtime_task(move || async move {
-            tcp_client::run_signal_client(&addr, shared, metadata, shutdown_rx).await;
+            tcp_client::run_signal_client(&addr, writer, shutdown_rx).await;
         });
 
-        Self { shutdown_tx }
+        runtime
     }
 
-    pub fn restart(
-        &mut self,
-        addr: impl Into<String>,
-        shared: Arc<Mutex<RoboMasterSignalInfo>>,
-        metadata: Arc<Mutex<RadarFeedMetadata>>,
-    ) {
+    pub fn restart(&mut self, addr: impl Into<String>) {
         let _ = self.shutdown_tx.send(true);
-        *self = Self::start(addr, shared, metadata);
+        *self = Self::start(addr, self.writer.clone());
     }
 }
 
 pub struct LaserRuntime {
     shutdown_tx: watch::Sender<bool>,
     started: bool,
+    writer: LaserObservationWriter,
 }
 
-impl Default for LaserRuntime {
-    fn default() -> Self {
+impl LaserRuntime {
+    pub fn new(writer: LaserObservationWriter) -> Self {
         let (shutdown_tx, _shutdown_rx) = watch::channel(false);
 
         Self {
             shutdown_tx,
             started: false,
+            writer,
         }
     }
-}
 
-impl LaserRuntime {
     pub fn is_started(&self) -> bool {
         self.started
     }
 
-    pub fn ensure_started(&mut self, port: u16, shared: Arc<Mutex<LaserObservation>>) {
+    pub fn ensure_started(&mut self, port: u16) {
         if self.started {
             return;
         }
 
         self.started = true;
-        self.spawn(port, shared);
+        self.spawn(port);
     }
 
-    pub fn restart(&mut self, port: u16, shared: Arc<Mutex<LaserObservation>>) {
+    pub fn restart(&mut self, port: u16) {
         let _ = self.shutdown_tx.send(true);
         self.started = true;
-        self.spawn(port, shared);
+        self.spawn(port);
     }
 
-    fn spawn(&mut self, port: u16, shared: Arc<Mutex<LaserObservation>>) {
+    fn spawn(&mut self, port: u16) {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         self.shutdown_tx = shutdown_tx;
+        let writer = self.writer.clone();
 
         spawn_runtime_task(move || async move {
-            udp_client::run_laser_client(port, shared, shutdown_rx).await;
+            udp_client::run_laser_client(port, writer, shutdown_rx).await;
         });
     }
 }
@@ -101,21 +96,21 @@ impl LaserRuntime {
 pub struct VideoRuntime {
     shutdown_tx: watch::Sender<bool>,
     started: bool,
+    writer: VideoFrameWriter,
 }
 
-impl Default for VideoRuntime {
-    fn default() -> Self {
+impl VideoRuntime {
+    pub fn new(writer: VideoFrameWriter) -> Self {
         let (shutdown_tx, _shutdown_rx) = watch::channel(false);
 
         Self {
             shutdown_tx,
             started: false,
+            writer,
         }
     }
-}
 
-impl VideoRuntime {
-    pub fn ensure_started(&mut self, shared: Arc<Mutex<Option<VideoFrame>>>) {
+    pub fn ensure_started(&mut self) {
         if self.started {
             return;
         }
@@ -125,9 +120,10 @@ impl VideoRuntime {
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         self.shutdown_tx = shutdown_tx;
+        let writer = self.writer.clone();
 
         spawn_runtime_task(move || async move {
-            video_stream::run_video_client(shared, shutdown_rx).await;
+            video_stream::run_video_client(writer, shutdown_rx).await;
         });
     }
 }

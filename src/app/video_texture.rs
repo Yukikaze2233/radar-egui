@@ -1,6 +1,4 @@
-use std::sync::{Arc, Mutex};
-
-use crate::video_stream::VideoFrame;
+use crate::video_stream::VideoFrameReader;
 
 #[derive(Default)]
 pub(super) struct VideoTextureCache {
@@ -11,42 +9,41 @@ pub(super) struct VideoTextureCache {
 }
 
 impl VideoTextureCache {
-    pub(super) fn refresh(&mut self, ctx: &egui::Context, shared: &Arc<Mutex<Option<VideoFrame>>>) {
-        let Ok(video) = shared.lock() else {
-            return;
-        };
+    pub(super) fn refresh(&mut self, ctx: &egui::Context, frames: &VideoFrameReader) {
+        let _ = frames.with_frame(|frame| {
+            let Some(frame) = frame else {
+                self.texture = None;
+                self.frame_seq = None;
+                self.dimensions = None;
+                return;
+            };
 
-        let Some(frame) = video.as_ref() else {
-            self.texture = None;
-            self.frame_seq = None;
-            self.dimensions = None;
-            return;
-        };
+            let dimensions = (frame.width, frame.height);
+            let needs_upload = self.texture.is_none()
+                || self.frame_seq != Some(frame.seq)
+                || self.dimensions != Some(dimensions);
 
-        let dimensions = (frame.width, frame.height);
-        let needs_upload = self.texture.is_none()
-            || self.frame_seq != Some(frame.seq)
-            || self.dimensions != Some(dimensions);
+            if !needs_upload {
+                return;
+            }
 
-        if !needs_upload {
-            return;
-        }
+            fill_rgba_scratch(&frame.data, &mut self.rgba_scratch);
+            let image = egui::ColorImage::from_rgba_unmultiplied(
+                [frame.width as usize, frame.height as usize],
+                &self.rgba_scratch,
+            );
 
-        fill_rgba_scratch(&frame.data, &mut self.rgba_scratch);
-        let image = egui::ColorImage::from_rgba_unmultiplied(
-            [frame.width as usize, frame.height as usize],
-            &self.rgba_scratch,
-        );
+            if let Some(texture) = self.texture.as_mut() {
+                texture.set(image, egui::TextureOptions::LINEAR);
+            } else {
+                self.texture = Some(
+                    ctx.load_texture("video_frame", image, egui::TextureOptions::LINEAR),
+                );
+            }
 
-        if let Some(texture) = self.texture.as_mut() {
-            texture.set(image, egui::TextureOptions::LINEAR);
-        } else {
-            self.texture =
-                Some(ctx.load_texture("video_frame", image, egui::TextureOptions::LINEAR));
-        }
-
-        self.frame_seq = Some(frame.seq);
-        self.dimensions = Some(dimensions);
+            self.frame_seq = Some(frame.seq);
+            self.dimensions = Some(dimensions);
+        });
     }
 
     pub(super) fn texture(&self) -> Option<&egui::TextureHandle> {

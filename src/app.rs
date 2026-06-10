@@ -1,14 +1,12 @@
-use std::sync::{Arc, Mutex, Once};
+use std::sync::Once;
 
 use self::video_texture::VideoTextureCache;
-use crate::laser_protocol::LaserObservation;
-use crate::protocol::RoboMasterSignalInfo;
 use crate::rerun_viz::RerunVisualizer;
 use crate::runtime::{LaserRuntime, RadarRuntime, VideoRuntime};
 use crate::services::process_control::ProcessControl;
-use crate::state_snapshots::{LaserSnapshot, RadarFeedMetadata, RadarSnapshot};
+use crate::state_snapshots::{LaserObservationReader, RadarFeedReader};
 use crate::theme;
-use crate::video_stream::VideoFrame;
+use crate::video_stream::VideoFrameReader;
 use crate::widgets::{LaserPanel, MinimapWidget};
 
 mod assets;
@@ -70,8 +68,7 @@ pub struct RadarApp {
     logo_texture: Option<egui::TextureHandle>,
     logo_texture_failed: bool,
 
-    shared: Arc<Mutex<RoboMasterSignalInfo>>,
-    radar_metadata: Arc<Mutex<RadarFeedMetadata>>,
+    radar_feed: RadarFeedReader,
     connection_status: ConnectionStatus,
     last_update: Option<std::time::Instant>,
     radar_runtime: RadarRuntime,
@@ -83,10 +80,10 @@ pub struct RadarApp {
     start_time: std::time::Instant,
     rerun_viz: RerunVisualizer,
 
-    laser_shared: Arc<Mutex<LaserObservation>>,
+    laser_feed: LaserObservationReader,
     laser_runtime: LaserRuntime,
     laser_port: String,
-    video_shared: Arc<Mutex<Option<VideoFrame>>>,
+    video_feed: VideoFrameReader,
     video_runtime: VideoRuntime,
     laser_video_texture: VideoTextureCache,
 
@@ -105,17 +102,15 @@ enum ConnectionStatus {
 
 impl Default for RadarApp {
     fn default() -> Self {
-        let shared = Arc::new(Mutex::new(RoboMasterSignalInfo::default()));
-        let radar_metadata = Arc::new(Mutex::new(RadarFeedMetadata::default()));
-        let radar_runtime =
-            RadarRuntime::start("127.0.0.1:2000", shared.clone(), radar_metadata.clone());
+        let (radar_feed, radar_writer) = RadarFeedReader::new_pair();
+        let radar_runtime = RadarRuntime::start("127.0.0.1:2000", radar_writer);
 
-        let laser_shared = Arc::new(Mutex::new(LaserObservation::default()));
-        let laser_runtime = LaserRuntime::default();
+        let (laser_feed, laser_writer) = LaserObservationReader::new_pair();
+        let laser_runtime = LaserRuntime::new(laser_writer);
         let laser_port = 5001;
 
-        let video_shared: Arc<Mutex<Option<VideoFrame>>> = Arc::new(Mutex::new(None));
-        let video_runtime = VideoRuntime::default();
+        let (video_feed, video_writer) = VideoFrameReader::new_pair();
+        let video_runtime = VideoRuntime::new(video_writer);
 
         Self {
             active_tab: ActiveTab::Radar,
@@ -126,8 +121,7 @@ impl Default for RadarApp {
             minimap_zoom: 1.0,
             logo_texture: None,
             logo_texture_failed: false,
-            shared,
-            radar_metadata,
+            radar_feed,
             connection_status: ConnectionStatus::Disconnected,
             last_update: None,
             radar_runtime,
@@ -138,10 +132,10 @@ impl Default for RadarApp {
             last_logged_radar_version: 0,
             start_time: std::time::Instant::now(),
             rerun_viz: RerunVisualizer::new(),
-            laser_shared,
+            laser_feed,
             laser_runtime,
             laser_port: laser_port.to_string(),
-            video_shared,
+            video_feed,
             video_runtime,
             laser_video_texture: VideoTextureCache::default(),
             process_control: ProcessControl::new(),
@@ -161,28 +155,24 @@ impl RadarApp {
         self.data_count = 0;
         self.last_logged_radar_version = 0;
 
-        if let Ok(mut metadata) = self.radar_metadata.lock() {
-            *metadata = RadarFeedMetadata::default();
-        }
+        self.radar_feed.reset_metadata();
 
         let addr = format!("{}:{}", self.ip, self.port);
-        self.radar_runtime
-            .restart(&addr, self.shared.clone(), self.radar_metadata.clone());
+        self.radar_runtime.restart(&addr);
     }
 
     fn reconnect_laser(&mut self) {
         let port: u16 = self.laser_port.parse().unwrap_or(5001);
-        self.laser_runtime.restart(port, self.laser_shared.clone());
+        self.laser_runtime.restart(port);
     }
 
     fn ensure_laser_started(&mut self) {
         let port: u16 = self.laser_port.parse().unwrap_or(5001);
-        self.laser_runtime
-            .ensure_started(port, self.laser_shared.clone());
+        self.laser_runtime.ensure_started(port);
     }
 
     fn ensure_video_started(&mut self) {
-        self.video_runtime.ensure_started(self.video_shared.clone());
+        self.video_runtime.ensure_started();
     }
 }
 
@@ -192,7 +182,7 @@ impl eframe::App for RadarApp {
         theme::set_dark_mode(self.dark_mode);
         self.ensure_minimap_texture(ctx);
         self.ensure_logo_texture(ctx);
-        let radar_snapshot = RadarSnapshot::capture(&self.shared, &self.radar_metadata);
+        let radar_snapshot = self.radar_feed.snapshot();
         self.update_connection_status(radar_snapshot.as_ref());
         self.apply_theme(ctx);
         self.process_control.trigger_pending_start_all();
@@ -269,8 +259,8 @@ impl eframe::App for RadarApp {
             ActiveTab::Laser => {
                 self.ensure_laser_started();
                 self.ensure_video_started();
-                let laser_snapshot = LaserSnapshot::capture(&self.laser_shared);
-                self.laser_video_texture.refresh(ctx, &self.video_shared);
+                let laser_snapshot = self.laser_feed.snapshot();
+                self.laser_video_texture.refresh(ctx, &self.video_feed);
 
                 egui::SidePanel::right("laser_inspector")
                     .exact_width(356.0)
