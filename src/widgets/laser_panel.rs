@@ -1,37 +1,29 @@
 use egui::{Color32, Pos2, RichText, Vec2};
-use std::sync::{Arc, Mutex};
 
 use crate::laser_protocol::LaserObservation;
 use crate::theme;
-use crate::video_stream::VideoFrame;
 
-pub struct LaserPanel {
-    shared: Arc<Mutex<LaserObservation>>,
-    video: Arc<Mutex<Option<VideoFrame>>>,
-}
+pub struct LaserPanel;
 
 impl LaserPanel {
-    pub fn new(
-        shared: Arc<Mutex<LaserObservation>>,
-        video: Arc<Mutex<Option<VideoFrame>>>,
-    ) -> Self {
-        Self { shared, video }
+    pub fn new() -> Self {
+        Self
     }
 
-    pub fn show_video_stage(&self, ui: &mut egui::Ui) {
-        let obs = match self.shared.lock() {
-            Ok(state) => state.clone(),
-            Err(_) => return,
-        };
-
-        self.draw_video_with_overlay(ui, &obs);
+    pub fn show_video_stage(
+        &self,
+        ui: &mut egui::Ui,
+        obs: Option<&LaserObservation>,
+        texture: Option<&egui::TextureHandle>,
+    ) {
+        let fallback = LaserObservation::default();
+        let obs = obs.unwrap_or(&fallback);
+        self.draw_video_with_overlay(ui, obs, texture);
     }
 
-    pub fn show_analysis_sidebar(&self, ui: &mut egui::Ui) {
-        let obs = match self.shared.lock() {
-            Ok(state) => state.clone(),
-            Err(_) => return,
-        };
+    pub fn show_analysis_sidebar(&self, ui: &mut egui::Ui, obs: Option<&LaserObservation>) {
+        let fallback = LaserObservation::default();
+        let obs = obs.unwrap_or(&fallback);
 
         self.card(ui, "目标检测", |ui| {
             if obs.detected {
@@ -129,10 +121,7 @@ impl LaserPanel {
                             ui.label(
                                 RichText::new(format!(
                                     "({:.0}, {:.0})  {:.0}×{:.0}",
-                                    cand.center[0],
-                                    cand.center[1],
-                                    cand.bbox[2],
-                                    cand.bbox[3]
+                                    cand.center[0], cand.center[1], cand.bbox[2], cand.bbox[3]
                                 ))
                                 .color(theme::subtext0())
                                 .size(11.0),
@@ -169,7 +158,12 @@ const MIN_VIDEO_WIDTH: f32 = 320.0;
 const MIN_VIDEO_HEIGHT: f32 = 220.0;
 
 impl LaserPanel {
-    fn draw_video_with_overlay(&self, ui: &mut egui::Ui, obs: &LaserObservation) {
+    fn draw_video_with_overlay(
+        &self,
+        ui: &mut egui::Ui,
+        obs: &LaserObservation,
+        texture: Option<&egui::TextureHandle>,
+    ) {
         let available = ui.available_size();
         let width = available.x.max(MIN_VIDEO_WIDTH);
         let height = (width * 9.0 / 16.0).max(MIN_VIDEO_HEIGHT);
@@ -178,55 +172,30 @@ impl LaserPanel {
         let rect = response.rect;
         painter.rect_filled(rect, 0.0, theme::panel_bg());
 
-        let (scale_x, scale_y) = if let Ok(video) = self.video.lock() {
-            if let Some(frame) = video.as_ref() {
-                let sx = rect.width() / frame.width as f32;
-                let sy = rect.height() / frame.height as f32;
-                let rgba = bgr_to_rgba(&frame.data, frame.width as usize, frame.height as usize);
-                let image = egui::ColorImage::from_rgba_unmultiplied(
-                    [frame.width as usize, frame.height as usize],
-                    &rgba,
-                );
-                let texture =
-                    ui.ctx()
-                        .load_texture("video_frame", image, egui::TextureOptions::LINEAR);
-                painter.image(
-                    texture.id(),
-                    rect,
-                    egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                    Color32::WHITE,
-                );
-                (sx, sy)
-            } else {
-                painter.text(
-                    rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    "等待视频流...",
-                    egui::FontId::proportional(24.0),
-                    theme::text_on_dark_muted(),
-                );
-                (rect.width() / 1920.0, rect.height() / 1080.0)
-            }
+        let (scale_x, scale_y) = if let Some(texture) = texture {
+            let texture_size = texture.size_vec2();
+            let sx = rect.width() / texture_size.x.max(1.0);
+            let sy = rect.height() / texture_size.y.max(1.0);
+            painter.image(
+                texture.id(),
+                rect,
+                egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                Color32::WHITE,
+            );
+            (sx, sy)
         } else {
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "等待视频流...",
+                egui::FontId::proportional(24.0),
+                theme::text_on_dark_muted(),
+            );
             (rect.width() / 1920.0, rect.height() / 1080.0)
         };
 
         draw_overlay(&painter, rect, obs, scale_x, scale_y);
     }
-}
-
-fn bgr_to_rgba(bgr: &[u8], width: usize, height: usize) -> Vec<u8> {
-    let mut rgba = vec![0u8; width * height * 4];
-    for i in 0..(width * height) {
-        let b = bgr[i * 3];
-        let g = bgr[i * 3 + 1];
-        let r = bgr[i * 3 + 2];
-        rgba[i * 4] = r;
-        rgba[i * 4 + 1] = g;
-        rgba[i * 4 + 2] = b;
-        rgba[i * 4 + 3] = 255;
-    }
-    rgba
 }
 
 fn draw_overlay(

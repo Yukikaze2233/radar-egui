@@ -1,21 +1,19 @@
 use egui::{Color32, Pos2, Stroke, Vec2};
-use std::sync::{Arc, Mutex};
 
 use crate::protocol::RoboMasterSignalInfo;
 use crate::theme;
 
-pub struct MinimapWidget {
-    shared: Arc<Mutex<RoboMasterSignalInfo>>,
-}
+pub struct MinimapWidget;
 
 impl MinimapWidget {
-    pub fn new(shared: Arc<Mutex<RoboMasterSignalInfo>>) -> Self {
-        Self { shared }
+    pub fn new() -> Self {
+        Self
     }
 
     pub fn show_with_state(
         &self,
         ui: &mut egui::Ui,
+        info: Option<&RoboMasterSignalInfo>,
         background: Option<&egui::TextureHandle>,
         pan: &mut Vec2,
         zoom: &mut f32,
@@ -67,9 +65,8 @@ impl MinimapWidget {
             self.draw_grid(&painter, board_rect);
         }
 
-        let info = match self.shared.lock() {
-            Ok(state) => state.clone(),
-            Err(_) => return,
+        let Some(info) = info else {
+            return;
         };
 
         let world_rect = if let Some(background) = background {

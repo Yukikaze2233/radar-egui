@@ -1,11 +1,11 @@
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::watch;
 
-use crate::protocol::{self, RoboMasterSignalInfo};
+use crate::protocol;
+use crate::state_snapshots::RadarFeedWriter;
 
 /// Connect to SDR signal stream at `addr`, parse incoming data, and update shared state.
 ///
@@ -17,7 +17,7 @@ use crate::protocol::{self, RoboMasterSignalInfo};
 ///   - Graceful shutdown via `shutdown` watch channel
 pub async fn run_signal_client(
     addr: &str,
-    shared: Arc<Mutex<RoboMasterSignalInfo>>,
+    writer: RadarFeedWriter,
     mut shutdown: watch::Receiver<bool>,
 ) {
     let mut buffer: Vec<u8> = Vec::new();
@@ -59,9 +59,7 @@ pub async fn run_signal_client(
                             buffer.extend_from_slice(&recv_buf[..n]);
                             if buffer.len() >= BUFFER_THRESHOLD {
                                 if let Some(info) = protocol::parse_signal(&buffer) {
-                                    if let Ok(mut state) = shared.lock() {
-                                        *state = info;
-                                    }
+                                    writer.publish(info);
                                 }
                                 buffer.clear();
                             }

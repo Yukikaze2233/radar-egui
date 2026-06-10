@@ -164,7 +164,10 @@ impl ScriptRunner {
             .stdin(Stdio::null())
             .spawn()?;
 
-        log::info!("Started SDR bridge (pid={}) with enemy={enemy_color}", child.id());
+        log::info!(
+            "Started SDR bridge (pid={}) with enemy={enemy_color}",
+            child.id()
+        );
         self.sdr_child = Some(child);
         Ok(())
     }

@@ -1,14 +1,14 @@
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::net::UdpSocket;
 use tokio::sync::watch;
 
-use crate::laser_protocol::{self, LaserObservation};
+use crate::laser_protocol;
+use crate::state_snapshots::LaserObservationWriter;
 
 pub async fn run_laser_client(
     port: u16,
-    shared: Arc<Mutex<LaserObservation>>,
+    writer: LaserObservationWriter,
     mut shutdown: watch::Receiver<bool>,
 ) {
     let addr = format!("0.0.0.0:{}", port);
@@ -35,9 +35,7 @@ pub async fn run_laser_client(
                             Some(obs) => {
                                 log::debug!("Parsed: detected={}, center=[{:.1}, {:.1}], candidates={}",
                                     obs.detected, obs.center[0], obs.center[1], obs.candidates.len());
-                                if let Ok(mut state) = shared.lock() {
-                                    *state = obs;
-                                }
+                                writer.publish(obs);
                             }
                             None => {
                                 log::warn!("Failed to parse UDP packet ({} bytes)", len);

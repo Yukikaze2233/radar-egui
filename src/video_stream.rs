@@ -7,6 +7,72 @@ pub struct VideoFrame {
     pub data: Vec<u8>,
     pub width: u32,
     pub height: u32,
+    pub seq: u32,
+}
+
+#[derive(Clone)]
+pub struct VideoFrameReader {
+    inner: Arc<Mutex<Option<VideoFrame>>>,
+}
+
+#[derive(Clone)]
+pub struct VideoFrameWriter {
+    inner: Arc<Mutex<Option<VideoFrame>>>,
+}
+
+impl Default for VideoFrameReader {
+    fn default() -> Self {
+        Self::new_pair().0
+    }
+}
+
+impl VideoFrameReader {
+    pub fn new_pair() -> (Self, VideoFrameWriter) {
+        let inner = Arc::new(Mutex::new(None));
+
+        (
+            Self {
+                inner: inner.clone(),
+            },
+            VideoFrameWriter { inner },
+        )
+    }
+
+    pub fn with_frame<R>(&self, read: impl FnOnce(Option<&VideoFrame>) -> R) -> Option<R> {
+        let frame = self.inner.lock().ok()?;
+        Some(read(frame.as_ref()))
+    }
+}
+
+impl VideoFrameWriter {
+    pub fn update(&self, frame_data: &[u8], width: u32, height: u32, seq: u32) {
+        if let Ok(mut state) = self.inner.lock() {
+            match state.as_mut() {
+                Some(existing)
+                    if existing.data.len() == frame_data.len()
+                        && existing.width == width
+                        && existing.height == height =>
+                {
+                    existing.data.copy_from_slice(frame_data);
+                    existing.seq = seq;
+                }
+                _ => {
+                    *state = Some(VideoFrame {
+                        data: frame_data.to_vec(),
+                        width,
+                        height,
+                        seq,
+                    });
+                }
+            }
+        }
+    }
+
+    pub fn clear(&self) {
+        if let Ok(mut state) = self.inner.lock() {
+            *state = None;
+        }
+    }
 }
 
 const SHM_NAME: &str = "/laser_frame";
@@ -95,8 +161,7 @@ fn open_shm() -> Result<ShmMapping, String> {
         }
         return Err(format!(
             "bad magic: 0x{:08X} (expected 0x{:08X})",
-            observed_magic,
-            SHM_MAGIC
+            observed_magic, SHM_MAGIC
         ));
     }
 
@@ -137,7 +202,7 @@ fn open_shm() -> Result<ShmMapping, String> {
 }
 
 pub async fn run_video_client(
-    shared: Arc<Mutex<Option<VideoFrame>>>,
+    writer: VideoFrameWriter,
     mut shutdown: watch::Receiver<bool>,
 ) {
     let mut backoff = Duration::from_millis(500);
@@ -161,9 +226,7 @@ pub async fn run_video_client(
                 m
             }
             Err(e) => {
-                if let Ok(mut state) = shared.lock() {
-                    *state = None;
-                }
+                writer.clear();
                 log::warn!("[shm] open failed: {} (retry in {:?})", e, backoff);
                 tokio::select! {
                     _ = tokio::time::sleep(backoff) => {}
@@ -215,30 +278,11 @@ pub async fn run_video_client(
             let frame_data =
                 unsafe { std::slice::from_raw_parts(mapping.ptr.add(buf_offset), frame_size) };
 
-            if let Ok(mut state) = shared.lock() {
-                match state.as_mut() {
-                    Some(existing)
-                        if existing.data.len() == frame_size
-                            && existing.width == mapping.width
-                            && existing.height == mapping.height =>
-                    {
-                        existing.data.copy_from_slice(frame_data);
-                    }
-                    _ => {
-                        *state = Some(VideoFrame {
-                            data: frame_data.to_vec(),
-                            width: mapping.width,
-                            height: mapping.height,
-                        });
-                    }
-                }
-            }
+            writer.update(frame_data, mapping.width, mapping.height, seq);
         }
 
         log::warn!("[shm] disconnected, reconnecting...");
-        if let Ok(mut state) = shared.lock() {
-            *state = None;
-        }
+        writer.clear();
         drop(mapping);
         tokio::select! {
             _ = tokio::time::sleep(backoff) => {}

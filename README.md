@@ -91,21 +91,42 @@ MIT
 
 ```
 src/
-├── main.rs           # 入口，egui 窗口初始化
-├── app.rs            # egui 应用，布局、交互、进程控制
-├── protocol.rs       # RoboMasterSignalInfo 结构体 + 二进制解析器
-├── tcp_client.rs     # 异步 TCP 客户端（SDR 信号流）
-├── udp_client.rs     # UDP 监听（laser_guidance 观测数据 :5001）
-├── video_stream.rs   # 共享内存视频帧读取 (/laser_frame)
-├── laser_protocol.rs # LaserObservation UDP 协议解析
-├── script_runner.rs  # 外部进程管理（laser/SDR/Unity 启动/停止）
-├── rerun_viz.rs      # Rerun 3D 可视化集成
-├── theme.rs          # Catppuccin 配色
+├── main.rs                  # 入口，eframe 窗口初始化
+├── app.rs                   # RadarApp 顶层状态与 update 主循环
+├── app/
+│   ├── assets.rs            # 字体 / 贴图加载
+│   ├── connection.rs        # Radar 连接状态与在线判定
+│   ├── theme_apply.rs       # 主题切换与 egui Visuals 应用
+│   ├── video_texture.rs     # Laser 视频纹理缓存（持久 TextureHandle + RGBA 复用）
+│   └── view.rs              # Radar / Laser 侧栏与主舞台 UI
+├── runtime/
+│   └── mod.rs               # Radar TCP / Laser UDP / Video SHM 后台任务生命周期
+├── services/
+│   ├── mod.rs
+│   └── process_control.rs   # 外部进程控制与 FIFO 命令编排
+├── state_snapshots.rs       # UI 每帧只读快照（Radar / Laser observation）
+├── protocol.rs              # RoboMasterSignalInfo 结构体 + 二进制解析器
+├── laser_protocol.rs        # LaserObservation UDP 协议解析
+├── tcp_client.rs            # SDR 信号流 TCP 接收
+├── udp_client.rs            # laser_guidance 观测数据 UDP 接收
+├── video_stream.rs          # /laser_frame 共享内存视频帧读取
+├── script_runner.rs         # Laser / SDR / Unity 进程原子启停实现
+├── rerun_viz.rs             # Rerun 3D 可视化集成（可选）
+├── theme.rs                 # Catppuccin 风格配色
 └── widgets/
-    ├── mod.rs        # 重导出
-    ├── minimap.rs    # 2D 战场小地图 (Painter)
-    └── panels.rs     # 血量/弹药/经济/增益面板
+    ├── mod.rs               # 重导出
+    ├── minimap.rs           # 2D 战场小地图（消费 RadarSnapshot）
+    ├── panels.rs            # 血量/弹药/经济/增益面板（消费 RadarSnapshot）
+    └── laser_panel.rs       # Laser 主舞台与分析面板渲染（消费 observation + 纹理）
 ```
+
+### 当前内部边界
+
+- `app.rs` 只保留顶层应用状态和 `update()` 驱动，不再直接管理全部细节。
+- `runtime/` 负责后台线程 / Tokio runtime 的创建与重连生命周期。
+- `services/process_control.rs` 负责脚本控制、Start All / Stop All 和 FIFO 命令发送。
+- `state_snapshots.rs` 把共享状态转换成每帧只读快照，避免 widget 自己反复 `lock + clone`。
+- `app/video_texture.rs` 把 Laser 视频纹理缓存提升到 app 层，避免每帧重新 `load_texture()`。
 
 ## 依赖
 
