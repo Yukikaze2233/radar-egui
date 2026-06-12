@@ -1,4 +1,10 @@
-//! Serial port data domain (placeholder).
+//! Serial port data domain.
 //!
-//! Future home for serial protocol parsing and client transport.
-//! See the module structure plan for intended sub-modules.
+//! Serial protocol parsing, data format definitions, and client transport.
+
+pub mod serialconfig;
+pub mod data_format;
+pub mod serial_receiver;
+pub mod serial_transmitter;
+pub mod serial_runningtime;
+pub mod serial_process;
