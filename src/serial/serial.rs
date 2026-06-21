@@ -1,9 +1,10 @@
 use std::thread;
 use std::time::Duration;
 
+use super::serial_parser::SerialParser;
 use serial2::{SerialPort, Settings};
 
-use crate::serial::serialconfig::SerialConfig;
+use crate::serial::{serial_parser, serialconfig::SerialConfig};
 
 pub struct Serial {
     serial_port: SerialPort,
@@ -42,10 +43,18 @@ impl Serial {
 }
 
 pub fn start_receiver(mut serial: Serial) -> thread::JoinHandle<()> {
+    let mut serial_parser = SerialParser::new();
     thread::spawn(move || loop {
         match serial.receive_data() {
-            Ok(data) => println!("Received data: {:?}", data),
-            Err(e) => eprintln!("Error receiving data: {}", e),
+            Ok(mut data) => {
+                let (parsed_any, remaining_buffer) = serial_parser.parser(&mut data);
+                if parsed_any {
+                    println!("Parsed protocol data: {:?}", serial_parser.protocol_data());
+                }
+            }
+            Err(e) => {
+                println!("Error receiving data: {}", e);
+            }
         }
     })
 }
