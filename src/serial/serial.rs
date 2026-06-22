@@ -8,7 +8,6 @@ use crate::serial::{serial_parser, serialconfig::SerialConfig};
 
 pub struct Serial {
     serial_port: SerialPort,
-    read_buffer: Vec<u8>,
 }
 
 impl Serial {
@@ -23,10 +22,7 @@ impl Serial {
 
         port.set_read_timeout(Duration::from_millis(config.timeout))?;
 
-        Ok(Self {
-            serial_port: port,
-            read_buffer: Vec::new(),
-        })
+        Ok(Self { serial_port: port })
     }
 
     pub fn receive_data(&mut self) -> std::io::Result<Vec<u8>> {
@@ -44,11 +40,13 @@ impl Serial {
 
 pub fn start_receiver(mut serial: Serial) -> thread::JoinHandle<()> {
     let mut serial_parser = SerialParser::new();
+    let mut data: Vec<u8> = Vec::new();
     thread::spawn(move || loop {
         match serial.receive_data() {
-            Ok(mut data) => {
-                let (parsed_any, remaining_buffer) = serial_parser.parser(&mut data);
-                if parsed_any {
+            Ok(add_data) => {
+                data.extend_from_slice(&add_data);
+                let (parsed, _remaining) = serial_parser.parser(&mut data);
+                if parsed {
                     println!("Parsed protocol data: {:?}", serial_parser.protocol_data());
                 }
             }
