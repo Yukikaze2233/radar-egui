@@ -9,3 +9,5 @@ linux/
 macos/
 build/
 .omo/
+*.pdf
+LearnLog.md

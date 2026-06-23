@@ -1,4 +1,13 @@
-//! Serial port data domain (placeholder).
+//! Serial port data domain.
 //!
-//! Future home for serial protocol parsing and client transport.
-//! See the module structure plan for intended sub-modules.
+//! Serial protocol parsing, data format definitions, and client transport.
+
+#![allow(dead_code)]
+
+pub mod data_format;
+#[allow(clippy::module_inception)]
+pub mod serial;
+pub mod serial_package;
+pub mod serial_parser;
+pub mod serialconfig;
+pub mod serial_crc;
