@@ -4,7 +4,7 @@ use std::time::Duration;
 use super::serial_parser::SerialParser;
 use serial2::{SerialPort, Settings};
 
-use crate::serial::{serial_parser, serialconfig::SerialConfig};
+use crate::serial::serialconfig::SerialConfig;
 
 pub struct Serial {
     serial_port: SerialPort,

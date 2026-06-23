@@ -2,6 +2,8 @@
 //!
 //! Serial protocol parsing, data format definitions, and client transport.
 
+#![allow(dead_code)]
+
 pub mod data_format;
 pub mod serial;
 pub mod serial_package;
