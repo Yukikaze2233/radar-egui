@@ -57,6 +57,7 @@ pub fn start_receiver(mut serial: Serial) -> thread::JoinHandle<()> {
             }
             Err(e) => {
                 println!("Error receiving data: {}", e);
+                thread::sleep(Duration::from_millis(50));
             }
         }
     })
@@ -67,8 +68,11 @@ pub fn start_transmitter(serial: Serial) -> thread::JoinHandle<()> {
         let data = vec![0x01, 0x02, 0x03, 0x04];
         match serial.send_data(&data) {
             Ok(_) => println!("Sent data: {:?}", data),
-            Err(e) => eprintln!("Error sending data: {}", e),
+            Err(e) => {
+                eprintln!("Error sending data: {}", e);
+                thread::sleep(Duration::from_millis(50));
+            }
         }
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(Duration::from_millis(50));
     })
 }
