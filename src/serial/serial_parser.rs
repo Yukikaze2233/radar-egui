@@ -28,16 +28,18 @@ impl SerialParser {
     /// 返回本次是否至少成功解析了一帧
     pub fn parser<'a>(&mut self, read_buffer: &'a mut Vec<u8>) -> (bool, &'a mut Vec<u8>) {
         let mut parsed_any = false;
-        for index in 0..read_buffer.len() {
+        let mut index = 0;
+        while index < read_buffer.len() {
             if read_buffer[index] != FRAME_HEADER_SOF {
+                index += 1;
                 continue;
             }
-
             let header_end = index + FRAME_HEADER_LENGTH;
             if header_end > read_buffer.len() {
-                continue;
+                break;
             }
             if !serial_crc::verify_crc8(&read_buffer[index..header_end]) {
+                index += 1;
                 continue;
             }
 
@@ -51,9 +53,13 @@ impl SerialParser {
             let package_start = index;
             let package_end = index + FRAME_HEADER_LENGTH + CMD_ID_LENGTH + data_len + CRC16_LENGTH;
             if package_end > read_buffer.len() {
-                continue;
+                break;
             }
             if !serial_crc::verify_crc16(&read_buffer[package_start..package_end]) {
+                index += FRAME_HEADER_LENGTH
+                    + CMD_ID_LENGTH
+                    + self.frame_header.frame_header_data_len as usize
+                    + CRC16_LENGTH;
                 continue;
             }
 
@@ -65,31 +71,31 @@ impl SerialParser {
                 GAME_STATE_CMD_ID => {
                     if let Ok((_, v)) = data_format::GameStateData::from_bytes((data, 0)) {
                         self.protocol_data.game_state_data = v;
-                        read_buffer.drain(package_start..package_end); // 清除已解析的帧数据
+                        parsed_any = true;
                     }
                 }
                 GAME_RESULT_CMD_ID => {
                     if let Ok((_, v)) = data_format::GameResultData::from_bytes((data, 0)) {
                         self.protocol_data.game_result_data = v;
-                        read_buffer.drain(package_start..package_end); // 清除已解析的帧数据
+                        parsed_any = true;
                     }
                 }
                 SITE_EVENT_CMD_ID => {
                     if let Ok((_, v)) = data_format::SiteEventData::from_bytes((data, 0)) {
                         self.protocol_data.site_event_data = v;
-                        read_buffer.drain(package_start..package_end); // 清除已解析的帧数据
+                        parsed_any = true;
                     }
                 }
                 DART_LAUNCH_CMD_ID => {
                     if let Ok((_, v)) = data_format::DartLaunchData::from_bytes((data, 0)) {
                         self.protocol_data.dart_launch_data = v;
-                        read_buffer.drain(package_start..package_end); // 清除已解析的帧数据
+                        parsed_any = true;
                     }
                 }
                 RADAR_MARK_PROCESS_CMD_ID => {
                     if let Ok((_, v)) = data_format::RadarMarkProcessData::from_bytes((data, 0)) {
                         self.protocol_data.radar_mark_process_data = v;
-                        read_buffer.drain(package_start..package_end); // 清除已解析的帧数据
+                        parsed_any = true;
                     }
                 }
                 RADAR_AUTONOMOUS_DECISION_SYNC_CMD_ID => {
@@ -97,15 +103,14 @@ impl SerialParser {
                         data_format::RadarAutonomousDecisionSyncData::from_bytes((data, 0))
                     {
                         self.protocol_data.radar_autonomous_decision_sync_data = v;
-                        read_buffer.drain(package_start..package_end); // 清除已解析的帧数据
+                        parsed_any = true;
                     }
                 }
-                _ => {
-                    read_buffer.drain(package_start..package_end);
-                } // 未知 cmd_id, 仍然清除已解析的帧数据
+                _ => {}
             }
-            parsed_any = true;
+            index = package_end;
         }
+        read_buffer.drain(0..index);
         (parsed_any, read_buffer)
     }
 }
