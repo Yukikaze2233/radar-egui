@@ -34,6 +34,7 @@ pub const DART_LAUNCH_DATA_LEN: usize = 3;
 pub const RADAR_MARK_PROCESS_DATA_LEN: usize = 2;
 pub const RADAR_AUTONOMOUS_DECISION_SYNC_DATA_LEN: usize = 1;
 pub const ROBOT_INTERACTION_DATA_LEN: usize = 118;
+pub const RADAR_AUTONOMOUS_DECISION_DATA_CMD_ID: u16 = 0x0121;
 pub const MINIMAP_RECEIVE_RADAR_DATA_LEN: usize = 48;
 pub const SDR_ENEMY_ROBOT_POSITION_DATA_LEN: usize = 24;
 pub const SDR_ENEMY_ROBOT_BLOOD_DATA_LEN: usize = 12;
@@ -232,6 +233,17 @@ impl Default for RobotInteractionData {
             user_data: Vec::new(),
         }
     }
+}
+
+// ─── 机器人交互子内容 (0x0301 的子内容 ID) ───
+
+// 子内容 cmd_id = 0x0121, 8 bytes
+#[derive(Debug, Clone, Default, DekuRead, DekuWrite)]
+#[deku(endian = "little")]
+pub struct RadarAutonomousDecisionData {
+    pub radar_cmd: u8,
+    pub password_cmd: u8,
+    pub password: [u8; 6],
 }
 
 // cmd_id = 0x0305, data_len = 48
@@ -457,6 +469,7 @@ pub struct SerialProtocolData {
     pub radar_mark_process_data: RadarMarkProcessData,
     pub radar_autonomous_decision_sync_data: RadarAutonomousDecisionSyncData,
     pub robot_interaction_data: RobotInteractionData,
+    pub radar_autonomous_decision_data: RadarAutonomousDecisionData,
     pub minimap_receive_radar_data: MinimapReceiveRadarData,
     pub sdr_enemy_robot_position_data: SdrEnemyRobotPositionData,
     pub sdr_enemy_robot_blood_data: SdrEnemyRobotBloodData,
