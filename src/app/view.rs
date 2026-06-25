@@ -30,9 +30,11 @@ impl RadarApp {
                 }
 
                 ui.add_space(8.0);
-                self.show_mode_button(ui, "◎", ActiveTab::Radar, "Radar");
+                self.show_mode_button(ui, "◎", ActiveTab::Sdr, "SDR");
                 ui.add_space(8.0);
                 self.show_mode_button(ui, "◈", ActiveTab::Laser, "Laser");
+                ui.add_space(8.0);
+                self.show_mode_button(ui, "◉", ActiveTab::Radar, "Radar");
             });
 
             ui.add_space(8.0);

@@ -11,3 +11,4 @@ build/
 .omo/
 *.pdf
 LearnLog.md
+.mimocode/

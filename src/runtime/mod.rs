@@ -5,8 +5,9 @@ use tokio::sync::watch;
 
 use crate::laser::observer;
 use crate::laser::video::{self, VideoFrameWriter};
-use crate::radar::client;
-use crate::state::{LaserObservationWriter, RadarFeedWriter};
+use crate::pointcloud::reader;
+use crate::sdr::client;
+use crate::state::{LaserObservationWriter, PointCloudFrameWriter, RadarFeedWriter};
 
 fn spawn_runtime_task<M, F>(make_future: M)
 where
@@ -124,6 +125,45 @@ impl VideoRuntime {
 
         spawn_runtime_task(move || async move {
             video::run_video_client(writer, shutdown_rx).await;
+        });
+    }
+}
+
+pub struct PointCloudRuntime {
+    shutdown_tx: watch::Sender<bool>,
+    started: bool,
+    writer: PointCloudFrameWriter,
+}
+
+impl PointCloudRuntime {
+    pub fn new(writer: PointCloudFrameWriter) -> Self {
+        let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+
+        Self {
+            shutdown_tx,
+            started: false,
+            writer,
+        }
+    }
+
+    pub fn is_started(&self) -> bool {
+        self.started
+    }
+
+    pub fn ensure_started(&mut self) {
+        if self.started {
+            return;
+        }
+
+        self.started = true;
+        let _ = self.shutdown_tx.send(true);
+
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        self.shutdown_tx = shutdown_tx;
+        let writer = self.writer.clone();
+
+        spawn_runtime_task(move || async move {
+            reader::run_pointcloud_client(writer, shutdown_rx).await;
         });
     }
 }

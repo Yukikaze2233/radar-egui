@@ -1,10 +1,11 @@
 use std::sync::Once;
 
 use self::video_texture::VideoTextureCache;
+use crate::pointcloud::visualizer::PointCloudVisualizer;
 use crate::rerun_viz::RerunVisualizer;
-use crate::runtime::{LaserRuntime, RadarRuntime, VideoRuntime};
+use crate::runtime::{LaserRuntime, PointCloudRuntime, RadarRuntime, VideoRuntime};
 use crate::services::process_control::ProcessControl;
-use crate::state::{LaserObservationReader, RadarFeedReader};
+use crate::state::{LaserObservationReader, PointCloudFrameReader, RadarFeedReader};
 use crate::theme;
 use crate::laser::video::VideoFrameReader;
 use crate::widgets::{LaserPanel, MinimapWidget};
@@ -22,8 +23,9 @@ const MINIMAP_DEFAULT_PAN_Y: f32 = 18.0;
 
 #[derive(PartialEq, Clone, Copy)]
 enum ActiveTab {
-    Radar,
+    Sdr,
     Laser,
+    Radar,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -79,6 +81,7 @@ pub struct RadarApp {
     last_logged_radar_version: u64,
     start_time: std::time::Instant,
     rerun_viz: RerunVisualizer,
+    pointcloud_viz: PointCloudVisualizer,
 
     laser_feed: LaserObservationReader,
     laser_runtime: LaserRuntime,
@@ -86,6 +89,10 @@ pub struct RadarApp {
     video_feed: VideoFrameReader,
     video_runtime: VideoRuntime,
     laser_video_texture: VideoTextureCache,
+
+    pointcloud_feed: PointCloudFrameReader,
+    pointcloud_runtime: PointCloudRuntime,
+    pointcloud_last_seq: u32,
 
     process_control: ProcessControl,
     camera_device: String,
@@ -112,8 +119,11 @@ impl Default for RadarApp {
         let (video_feed, video_writer) = VideoFrameReader::new_pair();
         let video_runtime = VideoRuntime::new(video_writer);
 
+        let (pointcloud_feed, pointcloud_writer) = PointCloudFrameReader::new_pair();
+        let pointcloud_runtime = PointCloudRuntime::new(pointcloud_writer);
+
         Self {
-            active_tab: ActiveTab::Radar,
+            active_tab: ActiveTab::Sdr,
             dark_mode: false,
             minimap_texture: None,
             minimap_texture_failed: false,
@@ -132,12 +142,16 @@ impl Default for RadarApp {
             last_logged_radar_version: 0,
             start_time: std::time::Instant::now(),
             rerun_viz: RerunVisualizer::new(),
+            pointcloud_viz: PointCloudVisualizer::default(),
             laser_feed,
             laser_runtime,
             laser_port: laser_port.to_string(),
             video_feed,
             video_runtime,
             laser_video_texture: VideoTextureCache::default(),
+            pointcloud_feed,
+            pointcloud_runtime,
+            pointcloud_last_seq: 0,
             process_control: ProcessControl::new(),
             camera_device: "/dev/laser_capture".to_string(),
             enemy_color: EnemyColor::Auto,
@@ -174,6 +188,45 @@ impl RadarApp {
     fn ensure_video_started(&mut self) {
         self.video_runtime.ensure_started();
     }
+
+    fn ensure_pointcloud_started(&mut self) {
+        self.pointcloud_runtime.ensure_started();
+    }
+
+    fn update_pointcloud(&mut self) {
+        let Some(rec) = self.rerun_viz.recording_stream() else {
+            return;
+        };
+        self.pointcloud_feed.with_frame(|frame| {
+            if let Some(frame) = frame {
+                if frame.seq != self.pointcloud_last_seq {
+                    self.pointcloud_last_seq = frame.seq;
+                    self.pointcloud_viz.log_point_cloud(&rec, frame);
+                }
+            }
+        });
+    }
+
+    fn show_pointcloud_status(&self, ui: &mut egui::Ui) {
+        let has_data = self
+            .pointcloud_feed
+            .with_frame(|f| f.is_some())
+            .unwrap_or(false);
+        let (status, color) = if has_data {
+            ("Receiving point cloud", theme::GREEN)
+        } else {
+            ("Waiting for SHM /pointcloud_frame ...", theme::text_muted())
+        };
+        ui.label(egui::RichText::new(status).color(color).size(13.0));
+        if has_data {
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(format!("frame seq: {}", self.pointcloud_last_seq))
+                    .color(theme::text_faint())
+                    .size(12.0),
+            );
+        }
+    }
 }
 
 impl eframe::App for RadarApp {
@@ -186,9 +239,10 @@ impl eframe::App for RadarApp {
         self.update_connection_status(radar_snapshot.as_ref());
         self.apply_theme(ctx);
         self.process_control.trigger_pending_start_all();
+        self.update_pointcloud();
 
         match self.active_tab {
-            ActiveTab::Radar => {
+            ActiveTab::Sdr => {
                 egui::SidePanel::right("radar_inspector")
                     .exact_width(356.0)
                     .resizable(false)
@@ -221,7 +275,7 @@ impl eframe::App for RadarApp {
                             ui.vertical(|ui| {
                                 ui.horizontal(|ui| {
                                     ui.label(
-                                        egui::RichText::new("Radar Workspace")
+                                            egui::RichText::new("SDR Workspace")
                                             .color(theme::text())
                                             .size(21.0),
                                     );
@@ -321,6 +375,63 @@ impl eframe::App for RadarApp {
                                     );
                                 },
                             );
+                        });
+                    });
+            }
+            ActiveTab::Radar => {
+                self.ensure_pointcloud_started();
+
+                egui::CentralPanel::default()
+                    .frame(
+                        egui::Frame::new()
+                            .fill(theme::app_bg())
+                            .inner_margin(egui::Margin::same(18)),
+                    )
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(58.0, ui.available_height()),
+                                egui::Layout::top_down(egui::Align::Center),
+                                |ui| {
+                                    self.show_mode_rail(ui);
+                                },
+                            );
+                            ui.add_space(12.0);
+                            ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("Radar Workspace")
+                                            .color(theme::text())
+                                            .size(21.0),
+                                    );
+                                    ui.add_space(12.0);
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "point cloud / rerun 3D viewer",
+                                        )
+                                        .color(theme::text_muted())
+                                        .size(13.0),
+                                    );
+                                });
+                                ui.add_space(24.0);
+                                ui.vertical_centered(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("◉  Point Cloud Radar")
+                                            .color(theme::text())
+                                            .size(18.0),
+                                    );
+                                    ui.add_space(10.0);
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "Rerun Viewer 在外部窗口中显示 3D 点云",
+                                        )
+                                        .color(theme::text_muted())
+                                        .size(14.0),
+                                    );
+                                    ui.add_space(8.0);
+                                    self.show_pointcloud_status(ui);
+                                });
+                            });
                         });
                     });
             }

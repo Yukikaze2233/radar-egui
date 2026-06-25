@@ -1,6 +1,6 @@
 use egui::{Color32, RichText, Vec2};
 
-use crate::radar::protocol::RoboMasterSignalInfo;
+use crate::sdr::protocol::RoboMasterSignalInfo;
 use crate::theme;
 
 pub struct StatusPanels;

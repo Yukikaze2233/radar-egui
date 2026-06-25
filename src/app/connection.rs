@@ -8,6 +8,8 @@ impl RadarApp {
             self.last_update = snapshot.metadata.last_packet_at;
 
             if snapshot.metadata.version > self.last_logged_radar_version {
+                self.rerun_viz
+                    .set_frame_sequence(snapshot.metadata.version as i64);
                 self.rerun_viz.log_all(&snapshot.signal);
                 self.last_logged_radar_version = snapshot.metadata.version;
             }

@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::laser::protocol::LaserObservation;
-use crate::radar::protocol::RoboMasterSignalInfo;
+use crate::sdr::protocol::RoboMasterSignalInfo;
 
 #[derive(Default)]
 struct RadarFeedState {
@@ -136,4 +136,53 @@ impl LaserObservationWriter {
 pub struct LaserSnapshot {
     pub observation: LaserObservation,
     pub online: bool,
+}
+
+use crate::pointcloud::protocol::PointCloudFrame;
+
+#[derive(Clone)]
+pub struct PointCloudFrameReader {
+    inner: Arc<Mutex<Option<PointCloudFrame>>>,
+}
+
+#[derive(Clone)]
+pub struct PointCloudFrameWriter {
+    inner: Arc<Mutex<Option<PointCloudFrame>>>,
+}
+
+impl Default for PointCloudFrameReader {
+    fn default() -> Self {
+        Self::new_pair().0
+    }
+}
+
+impl PointCloudFrameReader {
+    pub fn new_pair() -> (Self, PointCloudFrameWriter) {
+        let inner = Arc::new(Mutex::new(None));
+        (
+            Self {
+                inner: inner.clone(),
+            },
+            PointCloudFrameWriter { inner },
+        )
+    }
+
+    pub fn with_frame<R>(&self, read: impl FnOnce(Option<&PointCloudFrame>) -> R) -> Option<R> {
+        let frame = self.inner.lock().ok()?;
+        Some(read(frame.as_ref()))
+    }
+}
+
+impl PointCloudFrameWriter {
+    pub fn update(&self, frame: PointCloudFrame) {
+        if let Ok(mut state) = self.inner.lock() {
+            *state = Some(frame);
+        }
+    }
+
+    pub fn clear(&self) {
+        if let Ok(mut state) = self.inner.lock() {
+            *state = None;
+        }
+    }
 }
