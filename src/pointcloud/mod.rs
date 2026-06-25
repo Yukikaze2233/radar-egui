@@ -1,3 +1,3 @@
 pub mod protocol;
 pub mod reader;
-pub mod visualizer;
+pub mod rerun_visualizer;
