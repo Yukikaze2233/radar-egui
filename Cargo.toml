@@ -18,6 +18,7 @@ gst-app = { package = "gstreamer-app", version = "0.23", optional = true }
 gst-video = { package = "gstreamer-video", version = "0.23", optional = true }
 serial2 = "0.2.37"
 deku = "0.20.3"
+zmq = "0.10.0"
 
 [features]
 rerun = ["dep:rerun"]

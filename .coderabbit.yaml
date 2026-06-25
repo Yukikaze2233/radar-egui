@@ -1,16 +1,45 @@
 # .coderabbit.yaml
 language: zh-CN
+
 reviews:
   auto_review:
     enabled: true
     drafts: false
+    create_issues: true
+    issue_labels: ["bug", "automated"]
     ignore:
       - "**/target/**"
       - "**/node_modules/**"
       - "**/.git/**"
+
+  context: |
+    阅读 AGENTS.md 了解项目架构。
+    阅读 TODO.md 对照当前实现进度，在评审时检查是否有遗漏的 TODO 项。
+    阅读 LearnLog.md 了解开发者 Rust 学习历程，避免重复踩坑。
+
   path_instructions:
-    - path: "src/**"
-      instructions: "Follow existing code style, Catppuccin Mocha theme, egui patterns"
+    - path: "src/serial/**"
+      instructions: |
+        评审时关注:
+        - deku 位域注解的正确性 (bits, pad_bits_after)
+        - CRC8/CRC16 校验逻辑
+        - 滑动窗口 parser 的 index 推进 (防止死循环)
+        - 对照 TODO.md 检查协议字段是否完整实现
+        - struct ctx 类型一致性 (Endian vs ())
+        - RobotInteractionData 的 user_data 边界处理
+    - path: "src/app/**"
+      instructions: "关注 Arc<Mutex> 死锁风险、egui 重绘间隔 100ms 约束"
+    - path: "Cargo.toml"
+      instructions: |
+        检查依赖版本兼容性。
+        deku 是唯一序列化库，不要轻易引入 binrw/modular-bitfield。
+    - path: "src/serial/data_format.rs"
+      instructions: |
+        重点关注:
+        - 新增结构体的 deku 注解是否与 RoboMaster 协议 PDF 一致
+        - 位域字段的 bit_order = "lsb" 是否正确
+        - 多字节字段是否正确标注 endian = "little"
+
   review:
     focus:
       - "security"
