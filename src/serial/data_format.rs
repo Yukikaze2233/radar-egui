@@ -1,3 +1,4 @@
+use super::robot_interaction_id::DeviceId;
 use deku::prelude::*;
 // ─── 命令ID (C++ #define 的 Rust 版) ───
 //
@@ -33,6 +34,7 @@ pub const DART_LAUNCH_DATA_LEN: usize = 3;
 pub const RADAR_MARK_PROCESS_DATA_LEN: usize = 2;
 pub const RADAR_AUTONOMOUS_DECISION_SYNC_DATA_LEN: usize = 1;
 pub const ROBOT_INTERACTION_DATA_LEN: usize = 118;
+pub const RADAR_AUTONOMOUS_DECISION_DATA_CMD_ID: u16 = 0x0121;
 pub const MINIMAP_RECEIVE_RADAR_DATA_LEN: usize = 48;
 pub const SDR_ENEMY_ROBOT_POSITION_DATA_LEN: usize = 24;
 pub const SDR_ENEMY_ROBOT_BLOOD_DATA_LEN: usize = 12;
@@ -41,34 +43,6 @@ pub const SDR_ENEMY_ROBOT_OVERALL_STATE_DATA_LEN: usize = 8;
 pub const SDR_ENEMY_ROBOT_GAIN_DATA_LEN: usize = 36;
 pub const SDR_JAMMING_KEY_DATA_LEN: usize = 6;
 
-pub const CMD_ID_TO_DATA_LEN: [(u16, usize); 14] = [
-    (GAME_STATE_CMD_ID, GAME_STATE_DATA_LEN),
-    (GAME_RESULT_CMD_ID, GAME_RESULT_DATA_LEN),
-    (SITE_EVENT_CMD_ID, SITE_EVENT_DATA_LEN),
-    (DART_LAUNCH_CMD_ID, DART_LAUNCH_DATA_LEN),
-    (RADAR_MARK_PROCESS_CMD_ID, RADAR_MARK_PROCESS_DATA_LEN),
-    (
-        RADAR_AUTONOMOUS_DECISION_SYNC_CMD_ID,
-        RADAR_AUTONOMOUS_DECISION_SYNC_DATA_LEN,
-    ),
-    (ROBOT_INTERACTION_CMD_ID, ROBOT_INTERACTION_DATA_LEN),
-    (MINIMAP_RECEIVE_RADAR_CMD_ID, MINIMAP_RECEIVE_RADAR_DATA_LEN),
-    (
-        SDR_ENEMY_ROBOT_POSITION_CMD_ID,
-        SDR_ENEMY_ROBOT_POSITION_DATA_LEN,
-    ),
-    (SDR_ENEMY_ROBOT_BLOOD_CMD_ID, SDR_ENEMY_ROBOT_BLOOD_DATA_LEN),
-    (
-        SDR_ENEMY_ROBOT_REMAINING_AMMO_CMD_ID,
-        SDR_ENEMY_ROBOT_REMAINING_AMMO_DATA_LEN,
-    ),
-    (
-        SDR_ENEMY_ROBOT_OVERALL_STATE_CMD_ID,
-        SDR_ENEMY_ROBOT_OVERALL_STATE_DATA_LEN,
-    ),
-    (SDR_ENEMY_ROBOT_GAIN_CMD_ID, SDR_ENEMY_ROBOT_GAIN_DATA_LEN),
-    (SDR_JAMMING_KEY_CMD_ID, SDR_JAMMING_KEY_DATA_LEN),
-];
 #[derive(Debug, Clone, Default, DekuRead, DekuWrite)]
 #[deku(endian = "little")]
 pub struct SerialFrameHeader {
@@ -233,26 +207,43 @@ pub struct RadarAutonomousDecisionSyncData {
 // cmd_id = 0x0301, data_len = 118
 #[derive(Debug, Clone, DekuRead, DekuWrite)]
 #[deku(endian = "little")]
-pub struct RobotInteractionData {
+pub struct RobotInteractionHeader {
     /// data[0..2] u16 LE  子内容ID
     pub data_cmd_id: u16,
     /// data[2..4] u16 LE  发送者ID
-    pub sender_id: u16,
+    pub sender_id: DeviceId,
     /// data[4..6] u16 LE  接收者ID
-    pub receiver_id: u16,
-    /// data[6..118]     内容数据段 (最大112字节)
-    pub user_data: [u8; 112],
+    pub receiver_id: DeviceId,
+}
+
+#[derive(Debug, Clone)]
+pub struct RobotInteractionData {
+    pub data_cmd_id: u16,
+    pub sender_id: DeviceId,
+    pub receiver_id: DeviceId,
+    pub user_data: Vec<u8>,
 }
 
 impl Default for RobotInteractionData {
     fn default() -> Self {
         Self {
             data_cmd_id: 0,
-            sender_id: 0,
-            receiver_id: 0,
-            user_data: [0u8; 112],
+            sender_id: DeviceId::Default,
+            receiver_id: DeviceId::Default,
+            user_data: Vec::new(),
         }
     }
+}
+
+// ─── 机器人交互子内容 (0x0301 的子内容 ID) ───
+
+// 子内容 cmd_id = 0x0121, 8 bytes
+#[derive(Debug, Clone, Default, DekuRead, DekuWrite)]
+#[deku(endian = "little")]
+pub struct RadarAutonomousDecisionData {
+    pub radar_cmd: u8,
+    pub password_cmd: u8,
+    pub password: [u8; 6],
 }
 
 // cmd_id = 0x0305, data_len = 48
@@ -478,6 +469,7 @@ pub struct SerialProtocolData {
     pub radar_mark_process_data: RadarMarkProcessData,
     pub radar_autonomous_decision_sync_data: RadarAutonomousDecisionSyncData,
     pub robot_interaction_data: RobotInteractionData,
+    pub radar_autonomous_decision_data: RadarAutonomousDecisionData,
     pub minimap_receive_radar_data: MinimapReceiveRadarData,
     pub sdr_enemy_robot_position_data: SdrEnemyRobotPositionData,
     pub sdr_enemy_robot_blood_data: SdrEnemyRobotBloodData,

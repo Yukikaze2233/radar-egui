@@ -5,9 +5,10 @@
 #![allow(dead_code)]
 
 pub mod data_format;
+pub mod robot_interaction_id;
 #[allow(clippy::module_inception)]
 pub mod serial;
+pub mod serial_crc;
 pub mod serial_package;
 pub mod serial_parser;
 pub mod serialconfig;
-pub mod serial_crc;
