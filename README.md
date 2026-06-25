@@ -72,6 +72,8 @@ rerun assets/map.rrd
 
 ![Rerun 点云 2](assets/img_2026-06-25_22-32-52.png)
 
+![Rerun 点云 3](assets/img_2026-06-25_22-36-35.png)
+
 ## UI 布局
 
 - **左侧模式栏**：Radar / SDR / Laser 切换、深浅色主题、数据统计
