@@ -42,6 +42,12 @@ cd ~/radar
 
 ![集成预览 2](docs/integrated-preview-2.png)
 
+### Rerun 3D 点云
+
+![Rerun 点云 1](assets/img_2026-06-25_22-32-09.png)
+
+![Rerun 点云 2](assets/img_2026-06-25_22-32-52.png)
+
 ## UI 布局
 
 - **左侧模式栏**：Radar / SDR / Laser 切换、深浅色主题、数据统计
