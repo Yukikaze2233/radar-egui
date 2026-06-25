@@ -1,7 +1,7 @@
 mod app;
 mod laser;
 mod pointcloud;
-mod rerun_viz;
+mod rerun_visualizer;
 mod runtime;
 mod sdr;
 mod serial;

@@ -2,7 +2,7 @@ use std::sync::Once;
 
 use self::video_texture::VideoTextureCache;
 use crate::pointcloud::rerun_visualizer::PointCloudVisualizer;
-use crate::rerun_viz::RerunVisualizer;
+use crate::rerun_visualizer::RerunVisualizer;
 use crate::runtime::{LaserRuntime, PointCloudRuntime, RadarRuntime, VideoRuntime};
 use crate::services::process_control::ProcessControl;
 use crate::state::{LaserObservationReader, PointCloudFrameReader, RadarFeedReader};
