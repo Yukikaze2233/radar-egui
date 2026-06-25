@@ -60,12 +60,6 @@ rerun assets/map.rrd
 
 ## 截图
 
-### 集成预览
-
-![集成预览 1](docs/integrated-preview-1.png)
-
-![集成预览 2](docs/integrated-preview-2.png)
-
 ### Rerun 3D 点云
 
 ![Rerun 点云 1](assets/img_2026-06-25_22-32-09.png)
@@ -73,6 +67,12 @@ rerun assets/map.rrd
 ![Rerun 点云 2](assets/img_2026-06-25_22-32-52.png)
 
 ![Rerun 点云 3](assets/img_2026-06-25_22-36-35.png)
+
+### 集成预览
+
+![集成预览 1](docs/integrated-preview-1.png)
+
+![集成预览 2](docs/integrated-preview-2.png)
 
 ## UI 布局
 
