@@ -170,8 +170,7 @@ pub async fn run_pointcloud_client(
         let header = ShmHeader { ptr: mapping.ptr };
         let buf_size = (mapping.max_points as usize) * (mapping.stride as usize);
         let mut last_seq = 0u32;
-        let mut last_frame_update = Instant::now();
-        let _ = &mut last_frame_update; // assigned in polling loop on first tick
+        let mut first_frame_received = false;
         let mut last_frame_update = Instant::now();
 
         let mut interval = tokio::time::interval(POLL_INTERVAL);
@@ -185,7 +184,11 @@ pub async fn run_pointcloud_client(
 
             let seq = header.frame_seq();
             if seq == last_seq {
-                if last_frame_update.elapsed() > STALE_FRAME_TIMEOUT {
+                // Only trigger stale remap for live streams (seq was changing before),
+                // not for truly static one-shot point clouds.
+                if first_frame_received
+                    && last_frame_update.elapsed() > STALE_FRAME_TIMEOUT
+                {
                     log::warn!(
                         "[pcd] frame sequence stalled for {:?}, remapping",
                         STALE_FRAME_TIMEOUT
@@ -195,6 +198,7 @@ pub async fn run_pointcloud_client(
                 continue;
             }
             last_seq = seq;
+            first_frame_received = true;
             last_frame_update = Instant::now();
 
             if header.magic() != SHM_MAGIC {
@@ -203,6 +207,10 @@ pub async fn run_pointcloud_client(
             }
 
             let write_idx = header.write_idx();
+            if write_idx > 1 {
+                log::warn!("[pcd] invalid write_idx {}, skipping frame", write_idx);
+                continue;
+            }
             let point_count = header.point_count();
             let stride = header.stride().max(protocol::DEFAULT_STRIDE);
 

@@ -22,7 +22,7 @@
 
 ### SHM 协议
 
-```
+```text
 Header (64 字节):
   offset  size  field       说明
   0       4     magic        u32 = 0x50434446 ("PCDF")
@@ -40,7 +40,7 @@ Buffer (双缓冲，各 max_points × 28 字节):
 
 ### 写入流程（一次性写入，frame_seq=1）
 
-```
+```text
 1. shm_open("/pointcloud_frame", O_CREAT | O_RDWR, 0666)
 2. ftruncate(fd, 64 + 2 × max_points × 28)
 3. mmap(... MAP_SHARED)
@@ -53,16 +53,17 @@ Buffer (双缓冲，各 max_points × 28 字节):
 ### 坐标映射
 
 PCD 点 `(x, y, z)` 先做坐标映射再写入 SHM：
-```
-SHM.x = PCD.x     // 长度
-SHM.y = PCD.z     // 宽度
-SHM.z = PCD.y     // 高度
+
+```text
+SHM.x = -PCD.x    // 长度（翻 X 轴，匹配 rerun 坐标系）
+SHM.y =  PCD.z    // 宽度
+SHM.z =  PCD.y    // 高度
 ```
 
-法向量同理：`(nx, nz, ny)`。
+法向量同理：`(-nx, nz, ny)`。
 
 ## 验收标准
 
 - `pcl_viewer map.pcd` 能看到带颜色的点云
 - radar-egui 切到 ◉ Radar 标签后，rerun viewer 中显示场地点云
-- 不同朝向的面呈现不同颜色（地面绿、墙面蓝）
+- 不同朝向的面呈现不同颜色（地面暖白、墙面灰）

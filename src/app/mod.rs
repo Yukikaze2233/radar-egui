@@ -239,7 +239,9 @@ impl eframe::App for RadarApp {
         self.update_connection_status(radar_snapshot.as_ref());
         self.apply_theme(ctx);
         self.process_control.trigger_pending_start_all();
-        self.update_pointcloud();
+        if self.active_tab == ActiveTab::Radar {
+            self.update_pointcloud();
+        }
 
         match self.active_tab {
             ActiveTab::Sdr => {

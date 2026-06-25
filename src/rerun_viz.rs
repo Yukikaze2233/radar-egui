@@ -6,6 +6,8 @@ use rerun as rr;
 pub struct RerunVisualizer {
     #[cfg(feature = "rerun")]
     rec: Option<rr::RecordingStream>,
+    #[cfg(feature = "rerun")]
+    last_connect_attempt: Option<std::time::Instant>,
 }
 
 impl RerunVisualizer {
@@ -13,6 +15,8 @@ impl RerunVisualizer {
         Self {
             #[cfg(feature = "rerun")]
             rec: None,
+            #[cfg(feature = "rerun")]
+            last_connect_attempt: None,
         }
     }
 
@@ -21,6 +25,13 @@ impl RerunVisualizer {
         if let Some(rec) = &self.rec {
             return Some(rec.clone());
         }
+        let now = std::time::Instant::now();
+        if let Some(last) = self.last_connect_attempt {
+            if now.duration_since(last).as_secs() < 5 {
+                return None;
+            }
+        }
+        self.last_connect_attempt = Some(now);
         if let Ok(rec) = rr::RecordingStreamBuilder::new("radar-egui").connect_grpc() {
             self.rec = Some(rec.clone());
             return Some(rec);

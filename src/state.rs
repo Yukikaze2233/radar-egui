@@ -169,7 +169,9 @@ impl PointCloudFrameReader {
 
     pub fn with_frame<R>(&self, read: impl FnOnce(Option<&PointCloudFrame>) -> R) -> Option<R> {
         let frame = self.inner.lock().ok()?;
-        Some(read(frame.as_ref()))
+        let snapshot = frame.clone();
+        drop(frame);
+        Some(read(snapshot.as_ref()))
     }
 }
 

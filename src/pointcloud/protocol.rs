@@ -17,7 +17,8 @@
 //! │ buf_[1]  (max_points × stride bytes)                  │
 //! └────────────────────────────────────────────────────────┘
 //!
-//! 每点格式 (stride = 16): [f32 x, f32 y, f32 z, u32 rgba] (LE)
+//! 每点格式 (stride = 28): [f32 x, f32 y, f32 z, u32 rgba, f32 nx, f32 ny, f32 nz] (LE)
+//! 旧版兼容 (stride = 16): [f32 x, f32 y, f32 z, u32 rgba] (LE)
 
 /// SHM magic: "PCDF"
 pub const SHM_MAGIC: u32 = 0x50434446;
