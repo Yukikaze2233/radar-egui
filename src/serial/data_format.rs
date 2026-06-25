@@ -1,3 +1,4 @@
+use super::robot_interaction_id::DeviceId;
 use deku::prelude::*;
 // ─── 命令ID (C++ #define 的 Rust 版) ───
 //
@@ -205,24 +206,30 @@ pub struct RadarAutonomousDecisionSyncData {
 // cmd_id = 0x0301, data_len = 118
 #[derive(Debug, Clone, DekuRead, DekuWrite)]
 #[deku(endian = "little")]
-pub struct RobotInteractionData {
+pub struct RobotInteractionHeader {
     /// data[0..2] u16 LE  子内容ID
     pub data_cmd_id: u16,
     /// data[2..4] u16 LE  发送者ID
-    pub sender_id: u16,
+    pub sender_id: DeviceId,
     /// data[4..6] u16 LE  接收者ID
-    pub receiver_id: u16,
-    /// data[6..118]     内容数据段 (最大112字节)
-    pub user_data: [u8; 112],
+    pub receiver_id: DeviceId,
+}
+
+#[derive(Debug, Clone)]
+pub struct RobotInteractionData {
+    pub data_cmd_id: u16,
+    pub sender_id: DeviceId,
+    pub receiver_id: DeviceId,
+    pub user_data: Vec<u8>,
 }
 
 impl Default for RobotInteractionData {
     fn default() -> Self {
         Self {
             data_cmd_id: 0,
-            sender_id: 0,
-            receiver_id: 0,
-            user_data: [0u8; 112],
+            sender_id: DeviceId::Default,
+            receiver_id: DeviceId::Default,
+            user_data: Vec::new(),
         }
     }
 }

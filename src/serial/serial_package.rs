@@ -1,4 +1,5 @@
-use super::data_format::{SerialFrame, SerialFrameHeader};
+use super::data_format::{RobotInteractionData, RobotInteractionHeader, SerialFrame, SerialFrameHeader};
+use super::robot_interaction_id::DeviceId;
 use super::serial_crc;
 use deku::prelude::*;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -26,4 +27,29 @@ pub fn serial_package(cmd_id: u16, data: Vec<u8>) -> SerialFrame {
         serial_crc::append_crc16(&mut package_bytes).unwrap_or_default()
     };
     package
+}
+pub fn robot_interaction_package(
+    cmd_id: &u16,
+    sender_id: &DeviceId,
+    receiver_id: &DeviceId,
+    user_data: Vec<u8>,
+) -> RobotInteractionData {
+    let robot_interaction = RobotInteractionData {
+        data_cmd_id: *cmd_id,
+        sender_id: *sender_id,
+        receiver_id: *receiver_id,
+        user_data,
+    };
+    robot_interaction
+}
+
+pub fn robot_interaction_to_bytes(pkg: &RobotInteractionData) -> Vec<u8> {
+    let header = RobotInteractionHeader {
+        data_cmd_id: pkg.data_cmd_id,
+        sender_id: pkg.sender_id,
+        receiver_id: pkg.receiver_id,
+    };
+    let mut bytes = header.to_bytes().unwrap();
+    bytes.extend_from_slice(&pkg.user_data);
+    bytes
 }

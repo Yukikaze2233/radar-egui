@@ -2,7 +2,7 @@ use super::serial_crc;
 use crate::serial::data_format::{
     self, CMD_ID_LENGTH, CRC16_LENGTH, DART_LAUNCH_CMD_ID, FRAME_HEADER_LENGTH, FRAME_HEADER_SOF,
     GAME_RESULT_CMD_ID, GAME_STATE_CMD_ID, RADAR_AUTONOMOUS_DECISION_SYNC_CMD_ID,
-    RADAR_MARK_PROCESS_CMD_ID, SITE_EVENT_CMD_ID,
+    RADAR_MARK_PROCESS_CMD_ID, ROBOT_INTERACTION_CMD_ID, SITE_EVENT_CMD_ID,
 };
 use deku::prelude::*;
 
@@ -103,6 +103,20 @@ impl SerialParser {
                         data_format::RadarAutonomousDecisionSyncData::from_bytes((data, 0))
                     {
                         self.protocol_data.radar_autonomous_decision_sync_data = v;
+                        parsed_any = true;
+                    }
+                }
+                ROBOT_INTERACTION_CMD_ID => {
+                    if let Ok((remaining, header)) =
+                        data_format::RobotInteractionHeader::from_bytes((data, 0))
+                    {
+                        self.protocol_data.robot_interaction_data =
+                            data_format::RobotInteractionData {
+                                data_cmd_id: header.data_cmd_id,
+                                sender_id: header.sender_id,
+                                receiver_id: header.receiver_id,
+                                user_data: remaining.0.to_vec(),
+                            };
                         parsed_any = true;
                     }
                 }
