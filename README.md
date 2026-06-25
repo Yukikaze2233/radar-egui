@@ -135,6 +135,32 @@ src/
 - `libc` — 共享内存 (`shm_open`) 和 FIFO 控制
 - `image` — 纹理加载
 - `log` / `env_logger` — 日志
-- `rerun` — 3D 可视化（可选）
+- `rerun` — 3D 可视化（可选 feature `rerun`）
+
+### Rerun 可视化引擎
+
+[Rerun](https://docs.rs/rerun/latest/rerun/) 是一个多模态数据流可视化框架，用于流式记录和实时查看点云、图像、标量等数据。
+
+radar-egui 通过 Rerun 实现场地点云和 SDR 机器人位置的 3D 可视化。Rerun viewer 作为独立进程运行，通过 gRPC 接收数据。
+
+**安装 Rerun viewer：**
+
+```bash
+cargo install rerun-cli --locked
+# 或通过 pip
+pip install rerun-sdk
+```
+
+**启用 rerun feature：**
+
+```bash
+cargo run --release --features rerun
+```
+
+**查看场地点云：**
+
+```bash
+rerun assets/map.rrd
+```
 
 MIT
