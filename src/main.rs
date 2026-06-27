@@ -9,6 +9,7 @@ mod services;
 mod state;
 mod theme;
 mod widgets;
+mod zmq;
 
 fn main() -> eframe::Result {
     env_logger::init();
