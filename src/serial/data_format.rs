@@ -477,4 +477,22 @@ pub struct SerialProtocolData {
     pub sdr_enemy_robot_overall_state_data: SdrEnemyRobotOverallStateData,
     pub sdr_enemy_robot_gain_data: SdrEnemyRobotGainData,
     pub sdr_jamming_key_data: SdrJammingKeyData,
+    pub serial_produced: [u8; 15],
+    pub zmq_produced: [u8; 15],
 }
+
+pub const IDX_GAME_STATE: usize = 0;
+pub const IDX_GAME_RESULT: usize = 1;
+pub const IDX_SITE_EVENT: usize = 2;
+pub const IDX_DART_LAUNCH: usize = 3;
+pub const IDX_RADAR_MARK_PROCESS: usize = 4;
+pub const IDX_RADAR_AUTONOMOUS_DECISION_SYNC: usize = 5;
+pub const IDX_ROBOT_INTERACTION: usize = 6;
+pub const IDX_RADAR_AUTONOMOUS_DECISION: usize = 7;
+pub const IDX_MINIMAP_RECEIVE_RADAR: usize = 8;
+pub const IDX_SDR_ENEMY_ROBOT_POSITION: usize = 9;
+pub const IDX_SDR_ENEMY_ROBOT_BLOOD: usize = 10;
+pub const IDX_SDR_ENEMY_ROBOT_REMAINING_AMMO: usize = 11;
+pub const IDX_SDR_ENEMY_ROBOT_OVERALL_STATE: usize = 12;
+pub const IDX_SDR_ENEMY_ROBOT_GAIN: usize = 13;
+pub const IDX_SDR_JAMMING_KEY: usize = 14;

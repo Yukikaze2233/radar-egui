@@ -1,10 +1,17 @@
+use super::data_format::{
+    SerialProtocolData, DART_LAUNCH_CMD_ID, GAME_RESULT_CMD_ID, GAME_STATE_CMD_ID,
+    RADAR_AUTONOMOUS_DECISION_SYNC_CMD_ID, RADAR_MARK_PROCESS_CMD_ID, ROBOT_INTERACTION_CMD_ID,
+    SITE_EVENT_CMD_ID,
+};
+use super::serial_package::serial_package;
+use super::serial_parser::SerialParser;
+use super::serialconfig::SerialConfig;
+use deku::prelude::*;
+use serial2::{SerialPort, Settings};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-
-use super::serial_parser::SerialParser;
-use serial2::{SerialPort, Settings};
-
-use crate::serial::serialconfig::SerialConfig;
 
 pub struct Serial {
     serial_port: SerialPort,
@@ -43,8 +50,11 @@ impl Serial {
     }
 }
 
-pub fn start_receiver(mut serial: Serial) -> thread::JoinHandle<()> {
-    let mut serial_parser = SerialParser::new();
+pub fn start_receiver(
+    mut serial: Serial,
+    protocol_data_receiver_state: Arc<Mutex<SerialProtocolData>>,
+) -> thread::JoinHandle<()> {
+    let mut serial_parser = SerialParser::new(protocol_data_receiver_state);
     let mut data: Vec<u8> = Vec::new();
     thread::spawn(move || loop {
         match serial.receive_data() {
@@ -52,7 +62,7 @@ pub fn start_receiver(mut serial: Serial) -> thread::JoinHandle<()> {
                 data.extend_from_slice(&add_data);
                 let (parsed, _remaining) = serial_parser.parser(&mut data);
                 if parsed {
-                    println!("Parsed protocol data: {:?}", serial_parser.protocol_data());
+                    continue;
                 }
             }
             Err(e) => {
@@ -63,16 +73,48 @@ pub fn start_receiver(mut serial: Serial) -> thread::JoinHandle<()> {
     })
 }
 
-pub fn start_transmitter(serial: Serial) -> thread::JoinHandle<()> {
+pub fn start_transmitter(
+    serial: Serial,
+    tx_state: Arc<Mutex<SerialProtocolData>>,
+) -> thread::JoinHandle<()> {
     thread::spawn(move || loop {
-        let data = vec![0x01, 0x02, 0x03, 0x04];
-        match serial.send_data(&data) {
-            Ok(_) => println!("Sent data: {:?}", data),
-            Err(e) => {
-                eprintln!("Error sending data: {}", e);
-                thread::sleep(Duration::from_millis(50));
+        let mut data = tx_state.lock().unwrap();
+        for idx in 0..7 {
+            if data.zmq_produced[idx] == 0 {
+                continue;
             }
+            let (cmd_id, raw) = match idx {
+                0 => (GAME_STATE_CMD_ID, data.game_state_data.to_bytes()),
+                1 => (GAME_RESULT_CMD_ID, data.game_result_data.to_bytes()),
+                2 => (SITE_EVENT_CMD_ID, data.site_event_data.to_bytes()),
+                3 => (DART_LAUNCH_CMD_ID, data.dart_launch_data.to_bytes()),
+                4 => (
+                    RADAR_MARK_PROCESS_CMD_ID,
+                    data.radar_mark_process_data.to_bytes(),
+                ),
+                5 => (
+                    RADAR_AUTONOMOUS_DECISION_SYNC_CMD_ID,
+                    data.radar_autonomous_decision_sync_data.to_bytes(),
+                ),
+                6 => {
+                    let b = super::serial_package::robot_interaction_to_bytes(
+                        &data.robot_interaction_data,
+                    );
+                    (ROBOT_INTERACTION_CMD_ID, Ok(b))
+                }
+                _ => continue,
+            };
+            if let Ok(data_bytes) = raw {
+                let frame = serial_package(cmd_id, data_bytes);
+                if let Ok(frame_bytes) = frame.to_bytes() {
+                    if let Err(e) = serial.send_data(&frame_bytes) {
+                        eprintln!("Transmitter send error: {}", e);
+                    }
+                }
+            }
+            data.zmq_produced[idx] = 0;
         }
-        thread::sleep(Duration::from_millis(50));
+        drop(data);
+        thread::sleep(Duration::from_millis(10));
     })
 }

@@ -1,29 +1,27 @@
 use super::serial_crc;
 use crate::serial::data_format::{
     self, CMD_ID_LENGTH, CRC16_LENGTH, DART_LAUNCH_CMD_ID, FRAME_HEADER_LENGTH, FRAME_HEADER_SOF,
-    GAME_RESULT_CMD_ID, GAME_STATE_CMD_ID, RADAR_AUTONOMOUS_DECISION_SYNC_CMD_ID,
-    RADAR_MARK_PROCESS_CMD_ID, ROBOT_INTERACTION_CMD_ID, SITE_EVENT_CMD_ID,
+    GAME_RESULT_CMD_ID, GAME_STATE_CMD_ID, IDX_DART_LAUNCH, IDX_GAME_RESULT, IDX_GAME_STATE,
+    IDX_RADAR_AUTONOMOUS_DECISION_SYNC, IDX_RADAR_MARK_PROCESS, IDX_ROBOT_INTERACTION,
+    IDX_SITE_EVENT, RADAR_AUTONOMOUS_DECISION_SYNC_CMD_ID, RADAR_MARK_PROCESS_CMD_ID,
+    ROBOT_INTERACTION_CMD_ID, SITE_EVENT_CMD_ID,
 };
 use deku::prelude::*;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 pub struct SerialParser {
     frame_header: data_format::SerialFrameHeader,
-    protocol_data: data_format::SerialProtocolData,
+    protocol_data: Arc<Mutex<data_format::SerialProtocolData>>,
 }
 
 impl SerialParser {
-    pub fn new() -> Self {
+    pub fn new(protocol_data_input: Arc<Mutex<data_format::SerialProtocolData>>) -> Self {
         SerialParser {
             frame_header: data_format::SerialFrameHeader::default(),
-            protocol_data: data_format::SerialProtocolData::default(),
+            protocol_data: protocol_data_input,
         }
     }
-
-    /// 只读访问已解析的协议数据
-    pub fn protocol_data(&self) -> &data_format::SerialProtocolData {
-        &self.protocol_data
-    }
-
     /// 扫描 read_buffer, 解析其中的完整帧并写入 self.protocol_data
     /// 返回本次是否至少成功解析了一帧
     pub fn parser<'a>(&mut self, read_buffer: &'a mut Vec<u8>) -> (bool, &'a mut Vec<u8>) {
@@ -70,31 +68,37 @@ impl SerialParser {
             match cmd_id {
                 GAME_STATE_CMD_ID => {
                     if let Ok((_, v)) = data_format::GameStateData::from_bytes((data, 0)) {
-                        self.protocol_data.game_state_data = v;
+                        self.protocol_data.lock().unwrap().game_state_data = v;
+                        self.protocol_data.lock().unwrap().serial_produced[IDX_GAME_STATE] = 1;
                         parsed_any = true;
                     }
                 }
                 GAME_RESULT_CMD_ID => {
                     if let Ok((_, v)) = data_format::GameResultData::from_bytes((data, 0)) {
-                        self.protocol_data.game_result_data = v;
+                        self.protocol_data.lock().unwrap().game_result_data = v;
+                        self.protocol_data.lock().unwrap().serial_produced[IDX_GAME_RESULT] = 1;
                         parsed_any = true;
                     }
                 }
                 SITE_EVENT_CMD_ID => {
                     if let Ok((_, v)) = data_format::SiteEventData::from_bytes((data, 0)) {
-                        self.protocol_data.site_event_data = v;
+                        self.protocol_data.lock().unwrap().site_event_data = v;
+                        self.protocol_data.lock().unwrap().serial_produced[IDX_SITE_EVENT] = 1;
                         parsed_any = true;
                     }
                 }
                 DART_LAUNCH_CMD_ID => {
                     if let Ok((_, v)) = data_format::DartLaunchData::from_bytes((data, 0)) {
-                        self.protocol_data.dart_launch_data = v;
+                        self.protocol_data.lock().unwrap().dart_launch_data = v;
+                        self.protocol_data.lock().unwrap().serial_produced[IDX_DART_LAUNCH] = 1;
                         parsed_any = true;
                     }
                 }
                 RADAR_MARK_PROCESS_CMD_ID => {
                     if let Ok((_, v)) = data_format::RadarMarkProcessData::from_bytes((data, 0)) {
-                        self.protocol_data.radar_mark_process_data = v;
+                        self.protocol_data.lock().unwrap().radar_mark_process_data = v;
+                        self.protocol_data.lock().unwrap().serial_produced
+                            [IDX_RADAR_MARK_PROCESS] = 1;
                         parsed_any = true;
                     }
                 }
@@ -102,7 +106,12 @@ impl SerialParser {
                     if let Ok((_, v)) =
                         data_format::RadarAutonomousDecisionSyncData::from_bytes((data, 0))
                     {
-                        self.protocol_data.radar_autonomous_decision_sync_data = v;
+                        self.protocol_data
+                            .lock()
+                            .unwrap()
+                            .radar_autonomous_decision_sync_data = v;
+                        self.protocol_data.lock().unwrap().serial_produced
+                            [IDX_RADAR_AUTONOMOUS_DECISION_SYNC] = 1;
                         parsed_any = true;
                     }
                 }
@@ -110,13 +119,15 @@ impl SerialParser {
                     if let Ok((remaining, header)) =
                         data_format::RobotInteractionHeader::from_bytes((data, 0))
                     {
-                        self.protocol_data.robot_interaction_data =
+                        self.protocol_data.lock().unwrap().robot_interaction_data =
                             data_format::RobotInteractionData {
                                 data_cmd_id: header.data_cmd_id,
                                 sender_id: header.sender_id,
                                 receiver_id: header.receiver_id,
                                 user_data: remaining.0.to_vec(),
                             };
+                        self.protocol_data.lock().unwrap().serial_produced[IDX_ROBOT_INTERACTION] =
+                            1;
                         parsed_any = true;
                     }
                 }
