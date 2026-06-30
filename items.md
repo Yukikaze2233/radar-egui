@@ -3,62 +3,38 @@
 ## 串口通信层
 
 - [x] 串口协议解析器 (serial_parser) — 滑动窗口 cmd_id 扫描
-- [x] 设备 ID 枚举 (DeviceId) — 红方/蓝方机器人 + 裁判服务器
-- [x] 机器人交互包收发 (0x0301) — RobotInteractionHeader + 变长 user_data
-- [x] 雷达自主决策指令发送 (0x0121 → 0x8080)
-- [x] 收发线程所有权修复 (try_clone)
-- [x] 常规链路协议数据解析 (0x0001–0x020E)
-- [x] SerialProtocolData 增加 serial_produced[15] / zmq_produced[15] 双向标志数组
-- [x] serial_parser 解析后置位 serial_produced[idx] = 1
+- [x] 设备 ID 枚举 (DeviceId) — From<u16> / From<DeviceId> 双向转换
+- [x] 机器人交互包收发 (0x0301) — RobotInteractionData + subcontext 解析
+- [x] 常规链路协议数据解析 (0x0001–0x020E) + SDR 解析占位
+- [x] SerialProtocolData + serial_produced[15] / zmq_produced[15] 双向标志数组
 - [x] transmitter 重写 — 读取 zmq_produced[idx] → serial_package → 串口发送 → 归 0
+- [x] serial_parser 解析后置位 serial_produced[idx] = 1
 - [ ] 串口收发线程正式连线 app/mod.rs + runtime/（当前 demo 占位）
-- [ ] 串口发送分批次 — 不同 cmd_id 按各自频率独立发送（GameState 低频、RadarMark/RobotInteraction 中频等）
+- [ ] 串口发送分批次 — 不同 cmd_id 按各自频率独立发送
 
 ## ZMQ 通信层
 
 - [x] zmq.rs — PUB/SUB 初始化、zmq_send、zmq_recv 封装
 - [x] serde + serde_json 依赖引入 (Cargo.toml)
-- [x] zmq/data_format.rs — ZMQMessage + Transmit*/Receive* 结构体
-- [x] zmq/zmq_package.rs — JSON 组包 (SerialProtocolData → String)
-- [x] zmq/zmq_parser.rs — JSON 解包 (JSON bytes → SerialProtocolData)
+- [x] zmq/data_format.rs — ZmqMessageId + Transmit*/Receive* 结构体 + ZmqData 聚合
+- [x] zmq_package.rs — JSON 组包 (SerialProtocolData → String)
+- [x] zmq_parser.rs — JSON 解包 (JSON bytes → 类型分发)
+- [x] ZMQ_PUB_* / ZMQ_SUB_* 消息 ID 空间独立定义
+- [x] ZmqSdrRuntime — ZMQ SUB SDR 线程 (std::thread, 无 tokio)
+- [x] ZmqLaserRuntime — ZMQ SUB Laser 线程 (std::thread, 无 tokio)
 - [ ] ZMQ PUB 线程 — 读取 serial_produced[idx] → zmq_package → zmq_send
-- [ ] ZMQ SUB 线程 — zmq_recv → zmq_parser → zmq_produced[idx] = 1
-- [ ] ZMQ 线程连线 runtime/mod.rs + app/mod.rs
 
-## SDR 无线链路（TCP → ZMQ 替换中）
+## SDR 无线链路（TCP → ZMQ 已删除）
 
-- [x] SDR TCP 客户端 (127.0.0.1:2000) — parse_signal 滑动窗口解析
-- [x] RoboMasterSignalInfo → RadarFeedWriter → egui 状态面板
-- [x] `src/sdr/` 目录已删除，等待 ZMQ 替换
-- [ ] ZMQ 接入替代 SDR TCP（ZMQ SUB → ReceiveSdr → 写共享状态）
-- [ ] 修复受影响的 6 个文件：
-  - [ ] `src/main.rs` — 恢复 `mod sdr;` 或改为 ZMQ
-  - [ ] `src/runtime/mod.rs` — `RadarRuntime` → `ZmqRuntime`
-  - [ ] `src/state.rs` — `RadarFeed*` → ZMQ 版共享状态
-  - [ ] `src/app/mod.rs` — `RadarFeedReader` → ZMQ 读取
-  - [ ] `src/rerun_visualizer.rs` — `RoboMasterSignalInfo` → `ReceiveSdr`
-  - [ ] `src/widgets/minimap.rs`, `panels.rs` — `RoboMasterSignalInfo` → `ReceiveSdr`
-
-## 可视化 (egui)
-
-<!--
-- [x] 机器人位置小地图渲染
-- [x] 血量面板 (水平进度条, 颜色编码)
-- [x] 弹药面板
-- [x] 经济面板 (剩余/总计 + 进度条)
-- [x] 增益面板 (每机器人 5 项增益明细)
-- [x] SDR 数据面板
--->
-
-## 交互功能
-
-<!--
-- [ ] 小地图交互指令
-- [ ] 密钥更新/验证发送
--->
+- [x] `src/sdr/` 目录已删除
+- [x] 所有引用迁移至 `zmq/data_format::ReceiveSdr`（字段拆为子结构体 position/blood/ammo/state/gain/key）
+- [x] rerun_visualizer / minimap / panels 字段路径已更新
+- [x] `RadarFeed*` → `ZmqReader`/`ZmqWriter` 统一
 
 ## 工程
 
 - [x] ZMQ 依赖集成 (zmq2 crate)
-- [ ] ci/cd 构建脚本
+- [x] 串口模块中文注释英文化
+- [x] SerialMetadata / ZmqMetadata 监控层已删除（ZMQ 自动重连）
+- [ ] CI/CD 构建脚本
 - [ ] 测试用例补充
