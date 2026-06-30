@@ -1,6 +1,6 @@
 use super::{ActiveTab, ConnectionStatus, EnemyColor, RadarApp};
 use crate::services::script_runner::LaserScript;
-use crate::state::{LaserSnapshot, RadarSnapshot};
+use crate::state::{LaserSnapshot, SdrSnapshot};
 use crate::theme;
 use crate::widgets::{LaserPanel, StatusPanels};
 
@@ -99,7 +99,7 @@ impl RadarApp {
     pub(super) fn show_radar_sidebar(
         &mut self,
         ui: &mut egui::Ui,
-        radar_snapshot: Option<&RadarSnapshot>,
+        radar_snapshot: Option<&SdrSnapshot>,
     ) {
         Self::white_card(ui, "连接", |ui| {
             Self::status_chip(

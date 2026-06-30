@@ -1,6 +1,6 @@
 use egui::{Color32, Pos2, Stroke, Vec2};
 
-use crate::sdr::protocol::RoboMasterSignalInfo;
+use crate::zmq::data_format::ReceiveSdr;
 use crate::theme;
 
 pub struct MinimapWidget;
@@ -13,7 +13,7 @@ impl MinimapWidget {
     pub fn show_with_state(
         &self,
         ui: &mut egui::Ui,
-        info: Option<&RoboMasterSignalInfo>,
+        info: Option<&ReceiveSdr>,
         background: Option<&egui::TextureHandle>,
         pan: &mut Vec2,
         zoom: &mut f32,
@@ -82,12 +82,12 @@ impl MinimapWidget {
         let scale = world_rect.width().min(world_rect.height()) * 0.43 / 3000.0;
 
         let robots: &[(&str, [i16; 2], egui::Color32)] = &[
-            ("英雄", info.hero_position, theme::HERO_COLOR),
-            ("工程", info.engineer_position, theme::ENGINEER_COLOR),
-            ("步兵1", info.infantry_position_1, theme::INFANTRY1_COLOR),
-            ("步兵2", info.infantry_position_2, theme::INFANTRY2_COLOR),
-            ("无人机", info.drone_position, theme::DRONE_COLOR),
-            ("哨兵", info.sentinel_position, theme::SENTINEL_COLOR),
+            ("英雄", [info.hero_x, info.hero_y], theme::HERO_COLOR),
+            ("工程", [info.engineer_x, info.engineer_y], theme::ENGINEER_COLOR),
+            ("步兵1", [info.infantry_3_x, info.infantry_3_y], theme::INFANTRY1_COLOR),
+            ("步兵2", [info.infantry_4_x, info.infantry_4_y], theme::INFANTRY2_COLOR),
+            ("无人机", [info.aerial_x, info.aerial_y], theme::DRONE_COLOR),
+            ("哨兵", [info.sentry_x, info.sentry_y], theme::SENTINEL_COLOR),
         ];
 
         for &(name, pos, color) in robots {

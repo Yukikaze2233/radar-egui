@@ -67,15 +67,15 @@ pub struct SerialFrame {
 #[derive(Debug, Clone, Default, DekuRead, DekuWrite)]
 #[deku(endian = "little", bit_order = "lsb")]
 pub struct GameStateData {
-        /// data[0] bit 0-3  match type
+    /// data[0] bit 0-3  match type
     #[deku(bits = "4")]
     pub game_type: u8,
-        /// data[0] bit 4-7  match phase
+    /// data[0] bit 4-7  match phase
     #[deku(bits = "4")]
     pub game_progress: u8,
-        /// data[1..3] u16 LE  stage remaining time (seconds)
+    /// data[1..3] u16 LE  stage remaining time (seconds)
     pub stage_remain_time: u16,
-        /// data[3..11] u64 LE  UNIX timestamp
+    /// data[3..11] u64 LE  UNIX timestamp
     pub sync_timestamp: u64,
 }
 
@@ -121,7 +121,7 @@ pub struct SiteEventData {
     /// event_data bit 27-28  outpost gain point (0=none 1=ally 2=enemy)
     #[deku(bits = "2")]
     pub outpost_gain_status: u8,
-        /// event_data bit 29  base gain point (1=occupied)
+    /// event_data bit 29  base gain point (1=occupied)
     #[deku(bits = "1", pad_bits_after = "2")]
     pub base_gain_status: u8,
 }
@@ -205,33 +205,35 @@ pub struct RadarAutonomousDecisionSyncData {
 }
 
 // cmd_id = 0x0301, data_len = 118
-#[derive(Debug, Clone, DekuRead, DekuWrite)]
-#[deku(endian = "little")]
-pub struct RobotInteractionHeader {
-    /// data[0..2] u16 LE  sub-content ID
-    pub data_cmd_id: u16,
-    /// data[2..4] u16 LE  sender ID
-    pub sender_id: DeviceId,
-    /// data[4..6] u16 LE  receiver ID
-    pub receiver_id: DeviceId,
-}
-
 #[derive(Debug, Clone)]
 pub struct RobotInteractionData {
-    pub data_cmd_id: u16,
+    pub subcontext_cmd_id: u16,
     pub sender_id: DeviceId,
     pub receiver_id: DeviceId,
-    pub user_data: Vec<u8>,
+    pub subcontext_data: Vec<u8>,
 }
 
 impl Default for RobotInteractionData {
     fn default() -> Self {
         Self {
-            data_cmd_id: 0,
+            subcontext_cmd_id: 0,
             sender_id: DeviceId::Default,
             receiver_id: DeviceId::Default,
-            user_data: Vec::new(),
+            subcontext_data: Vec::new(),
         }
+    }
+}
+impl RobotInteractionData {
+    /// Serialize to the data payload of a 0x0301 frame:
+    /// [sub_cmd_id:2 LE] [sender_id:2 LE] [receiver_id:2 LE] [sub_data:N]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = self.subcontext_cmd_id.to_le_bytes().to_vec();
+        let sid: u16 = self.sender_id.into();
+        bytes.extend_from_slice(&sid.to_le_bytes());
+        let rid: u16 = self.receiver_id.into();
+        bytes.extend_from_slice(&rid.to_le_bytes());
+        bytes.extend_from_slice(&self.subcontext_data);
+        bytes
     }
 }
 

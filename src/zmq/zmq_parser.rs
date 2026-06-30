@@ -1,5 +1,4 @@
-use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use serde::Deserialize;
 
 use crate::serial::data_format::{MINIMAP_RECEIVE_RADAR_CMD_ID, SDR_ENEMY_ROBOT_POSITION_CMD_ID};
 

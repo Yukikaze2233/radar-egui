@@ -6,8 +6,8 @@ use tokio::sync::watch;
 use crate::laser::observer;
 use crate::laser::video::{self, VideoFrameWriter};
 use crate::pointcloud::reader;
-use crate::sdr::client;
-use crate::state::{LaserObservationWriter, PointCloudFrameWriter, RadarFeedWriter};
+// use crate::sdr::client; // TODO: replace with ZMQ SUB runtime
+use crate::state::{LaserObservationWriter, PointCloudFrameWriter};
 
 fn spawn_runtime_task<M, F>(make_future: M)
 where
@@ -20,32 +20,8 @@ where
     });
 }
 
-pub struct RadarRuntime {
-    shutdown_tx: watch::Sender<bool>,
-    writer: RadarFeedWriter,
-}
-
-impl RadarRuntime {
-    pub fn start(addr: impl Into<String>, writer: RadarFeedWriter) -> Self {
-        let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        let addr = addr.into();
-        let runtime = Self {
-            shutdown_tx,
-            writer: writer.clone(),
-        };
-
-        spawn_runtime_task(move || async move {
-            client::run_signal_client(&addr, writer, shutdown_rx).await;
-        });
-
-        runtime
-    }
-
-    pub fn restart(&mut self, addr: impl Into<String>) {
-        let _ = self.shutdown_tx.send(true);
-        *self = Self::start(addr, self.writer.clone());
-    }
-}
+// TODO: replace with ZMQ SUB runtime
+// pub struct RadarRuntime { ... }
 
 pub struct LaserRuntime {
     shutdown_tx: watch::Sender<bool>,

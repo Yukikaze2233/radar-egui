@@ -1,8 +1,8 @@
 use super::{ConnectionStatus, RadarApp};
-use crate::state::RadarSnapshot;
+use crate::state::SdrSnapshot;
 
 impl RadarApp {
-    pub(super) fn update_connection_status(&mut self, snapshot: Option<&RadarSnapshot>) {
+    pub(super) fn update_connection_status(&mut self, snapshot: Option<&SdrSnapshot>) {
         if let Some(snapshot) = snapshot {
             self.data_count = snapshot.metadata.packet_count;
             self.last_update = snapshot.metadata.last_packet_at;

@@ -131,6 +131,7 @@ pub struct ReceiveSdr {
     pub highland_upper_status: u8,
     pub ramp_rear_status: u8,
     pub road_upper_status: u8,
+    pub occupation_status: [u8; 6],
 
     // Gains (0x0A05) — 5 robots × gain fields
     pub hero_hp_recovery: u8,

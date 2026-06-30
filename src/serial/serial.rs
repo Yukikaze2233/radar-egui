@@ -107,9 +107,7 @@ pub fn start_transmitter(
                     data.radar_autonomous_decision_sync_data.to_bytes(),
                 ),
                 6 => {
-                    let b = super::serial_package::robot_interaction_to_bytes(
-                        &data.robot_interaction_data,
-                    );
+                    let b = data.robot_interaction_data.to_bytes();
                     (ROBOT_INTERACTION_CMD_ID, Ok(b))
                 }
                 _ => continue,

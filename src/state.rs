@@ -2,32 +2,32 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::laser::protocol::LaserObservation;
-use crate::sdr::protocol::RoboMasterSignalInfo;
+use crate::zmq::data_format::ReceiveSdr;
 
 #[derive(Default)]
-struct RadarFeedState {
-    signal: RoboMasterSignalInfo,
-    metadata: RadarFeedMetadata,
+struct SdrFeedState {
+    signal: ReceiveSdr,
+    metadata: SdrFeedMetadata,
 }
 
 #[derive(Clone)]
-pub struct RadarFeedReader {
-    inner: Arc<Mutex<RadarFeedState>>,
+pub struct SdrFeedReader {
+    inner: Arc<Mutex<SdrFeedState>>,
 }
 
 #[derive(Clone)]
-pub struct RadarFeedWriter {
-    inner: Arc<Mutex<RadarFeedState>>,
+pub struct SdrFeedWriter {
+    inner: Arc<Mutex<SdrFeedState>>,
 }
 
 #[derive(Clone, Default)]
-pub struct RadarFeedMetadata {
+pub struct SdrFeedMetadata {
     pub packet_count: u64,
     pub version: u64,
     pub last_packet_at: Option<Instant>,
 }
 
-impl RadarFeedMetadata {
+impl SdrFeedMetadata {
     pub fn mark_packet(&mut self) {
         self.packet_count += 1;
         self.version += 1;
@@ -35,28 +35,28 @@ impl RadarFeedMetadata {
     }
 }
 
-impl Default for RadarFeedReader {
+impl Default for SdrFeedReader {
     fn default() -> Self {
         Self::new_pair().0
     }
 }
 
-impl RadarFeedReader {
-    pub fn new_pair() -> (Self, RadarFeedWriter) {
-        let inner = Arc::new(Mutex::new(RadarFeedState::default()));
+impl SdrFeedReader {
+    pub fn new_pair() -> (Self, SdrFeedWriter) {
+        let inner = Arc::new(Mutex::new(SdrFeedState::default()));
 
         (
             Self {
                 inner: inner.clone(),
             },
-            RadarFeedWriter { inner },
+            SdrFeedWriter { inner },
         )
     }
 
-    pub fn snapshot(&self) -> Option<RadarSnapshot> {
+    pub fn snapshot(&self) -> Option<SdrSnapshot> {
         let state = self.inner.lock().ok()?;
 
-        Some(RadarSnapshot {
+        Some(SdrSnapshot {
             signal: state.signal.clone(),
             metadata: state.metadata.clone(),
         })
@@ -70,8 +70,8 @@ impl RadarFeedReader {
     }
 }
 
-impl RadarFeedWriter {
-    pub fn publish(&self, signal: RoboMasterSignalInfo) {
+impl SdrFeedWriter {
+    pub fn publish(&self, signal: ReceiveSdr) {
         if let Ok(mut state) = self.inner.lock() {
             state.signal = signal;
             state.metadata.mark_packet();
@@ -79,9 +79,9 @@ impl RadarFeedWriter {
     }
 }
 
-pub struct RadarSnapshot {
-    pub signal: RoboMasterSignalInfo,
-    pub metadata: RadarFeedMetadata,
+pub struct SdrSnapshot {
+    pub signal: ReceiveSdr,
+    pub metadata: SdrFeedMetadata,
 }
 
 #[derive(Clone)]

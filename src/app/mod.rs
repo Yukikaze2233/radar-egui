@@ -3,9 +3,9 @@ use std::sync::Once;
 use self::video_texture::VideoTextureCache;
 use crate::pointcloud::rerun_visualizer::PointCloudVisualizer;
 use crate::rerun_visualizer::RerunVisualizer;
-use crate::runtime::{LaserRuntime, PointCloudRuntime, RadarRuntime, VideoRuntime};
+use crate::runtime::{LaserRuntime, PointCloudRuntime, VideoRuntime /* TODO: ZmqRuntime */};
 use crate::services::process_control::ProcessControl;
-use crate::state::{LaserObservationReader, PointCloudFrameReader, RadarFeedReader};
+use crate::state::{LaserObservationReader, PointCloudFrameReader, SdrFeedReader};
 use crate::theme;
 use crate::laser::video::VideoFrameReader;
 use crate::widgets::{LaserPanel, MinimapWidget};
@@ -70,10 +70,10 @@ pub struct RadarApp {
     logo_texture: Option<egui::TextureHandle>,
     logo_texture_failed: bool,
 
-    radar_feed: RadarFeedReader,
+    sdr_feed: SdrFeedReader,
     connection_status: ConnectionStatus,
     last_update: Option<std::time::Instant>,
-    radar_runtime: RadarRuntime,
+    // radar_runtime: RadarRuntime, // TODO: replace with ZmqRuntime
     ip: String,
     port: String,
     error_message: Option<String>,
@@ -109,8 +109,8 @@ enum ConnectionStatus {
 
 impl Default for RadarApp {
     fn default() -> Self {
-        let (radar_feed, radar_writer) = RadarFeedReader::new_pair();
-        let radar_runtime = RadarRuntime::start("127.0.0.1:2000", radar_writer);
+        let (sdr_feed, _sdr_writer) = SdrFeedReader::new_pair();
+        // TODO: ZmqRuntime replaces RadarRuntime;
 
         let (laser_feed, laser_writer) = LaserObservationReader::new_pair();
         let laser_runtime = LaserRuntime::new(laser_writer);
@@ -131,10 +131,10 @@ impl Default for RadarApp {
             minimap_zoom: 1.0,
             logo_texture: None,
             logo_texture_failed: false,
-            radar_feed,
+            sdr_feed,
             connection_status: ConnectionStatus::Disconnected,
             last_update: None,
-            radar_runtime,
+            // radar_runtime, // TODO: ZmqRuntime
             ip: "127.0.0.1".to_string(),
             port: "2000".to_string(),
             error_message: None,
@@ -169,10 +169,10 @@ impl RadarApp {
         self.data_count = 0;
         self.last_logged_radar_version = 0;
 
-        self.radar_feed.reset_metadata();
+        self.sdr_feed.reset_metadata();
 
-        let addr = format!("{}:{}", self.ip, self.port);
-        self.radar_runtime.restart(&addr);
+        let _addr = format!("{}:{}", self.ip, self.port);
+        // self.radar_runtime // TODO: ZmqRuntime.restart(&addr);
     }
 
     fn reconnect_laser(&mut self) {
@@ -235,7 +235,7 @@ impl eframe::App for RadarApp {
         theme::set_dark_mode(self.dark_mode);
         self.ensure_minimap_texture(ctx);
         self.ensure_logo_texture(ctx);
-        let radar_snapshot = self.radar_feed.snapshot();
+        let radar_snapshot = self.sdr_feed.snapshot();
         self.update_connection_status(radar_snapshot.as_ref());
         self.apply_theme(ctx);
         self.process_control.trigger_pending_start_all();

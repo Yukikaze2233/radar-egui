@@ -12,6 +12,7 @@
 - [x] serial_parser 解析后置位 serial_produced[idx] = 1
 - [x] transmitter 重写 — 读取 zmq_produced[idx] → serial_package → 串口发送 → 归 0
 - [ ] 串口收发线程正式连线 app/mod.rs + runtime/（当前 demo 占位）
+- [ ] 串口发送分批次 — 不同 cmd_id 按各自频率独立发送（GameState 低频、RadarMark/RobotInteraction 中频等）
 
 ## ZMQ 通信层
 

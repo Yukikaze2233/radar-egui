@@ -1,4 +1,5 @@
 use super::serial_crc;
+use super::robot_interaction_id::DeviceId;
 use crate::serial::data_format::{
     self, CMD_ID_LENGTH, CRC16_LENGTH, DART_LAUNCH_CMD_ID, FRAME_HEADER_LENGTH, FRAME_HEADER_SOF,
     GAME_RESULT_CMD_ID, GAME_STATE_CMD_ID, IDX_DART_LAUNCH, IDX_GAME_RESULT, IDX_GAME_STATE,
@@ -117,15 +118,16 @@ impl SerialParser {
                     }
                 }
                 ROBOT_INTERACTION_CMD_ID => {
-                    if let Ok((remaining, header)) =
-                        data_format::RobotInteractionHeader::from_bytes((data, 0))
-                    {
+                    if data.len() >= 6 {
+                        let sub_cmd = u16::from_le_bytes([data[0], data[1]]);
+                        let sender = DeviceId::from(u16::from_le_bytes([data[2], data[3]]));
+                        let receiver = DeviceId::from(u16::from_le_bytes([data[4], data[5]]));
                         let mut lock = self.protocol_data.lock().unwrap();
                         lock.robot_interaction_data = data_format::RobotInteractionData {
-                            data_cmd_id: header.data_cmd_id,
-                            sender_id: header.sender_id,
-                            receiver_id: header.receiver_id,
-                            user_data: remaining.0.to_vec(),
+                            subcontext_cmd_id: sub_cmd,
+                            sender_id: sender,
+                            receiver_id: receiver,
+                            subcontext_data: data[6..].to_vec(),
                         };
                         lock.serial_produced[IDX_ROBOT_INTERACTION] = 1;
                         parsed_any = true;
