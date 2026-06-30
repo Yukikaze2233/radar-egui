@@ -19,7 +19,7 @@
 - [x] zmq/data_format.rs — ZmqMessageId + Transmit*/Receive* 结构体 + ZmqData 聚合
 - [x] zmq_package.rs — JSON 组包 (SerialProtocolData → String)
 - [x] zmq_parser.rs — JSON 解包 (JSON bytes → 类型分发)
-- [x] ZMQ_PUB_* / ZMQ_SUB_* 消息 ID 空间独立定义
+- [x] `ZMQ_PUB_*` / `ZMQ_SUB_*` 消息 ID 空间独立定义
 - [x] ZmqSdrRuntime — ZMQ SUB SDR 线程 (std::thread, 无 tokio)
 - [x] ZmqLaserRuntime — ZMQ SUB Laser 线程 (std::thread, 无 tokio)
 - [ ] ZMQ PUB 线程 — 读取 serial_produced[idx] → zmq_package → zmq_send
