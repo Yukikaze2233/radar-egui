@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Game state broadcast (cmd 0x0001)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TransmitGameState {
+    pub cmd_id: u16,
     pub game_type: u8,
     pub game_progress: u8,
     pub stage_remain_time: u16,
@@ -14,6 +15,7 @@ pub struct TransmitGameState {
 /// Radar mark progress broadcast (cmd 0x020C)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TransmitRadarMarkProcess {
+    pub cmd_id: u16,
     pub opponent_hero_vulnerable: u8,
     pub opponent_engineer_vulnerable: u8,
     pub opponent_infantry_3_vulnerable: u8,
@@ -31,6 +33,7 @@ pub struct TransmitRadarMarkProcess {
 /// Radar autonomous decision sync broadcast (cmd 0x020E)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TransmitRadarSync {
+    pub cmd_id: u16,
     pub double_weakness_chance: u8,
     pub double_weakness_active: u8,
     pub encryption_rank: u8,
@@ -42,6 +45,7 @@ pub struct TransmitRadarSync {
 /// Lidar location data from external `alliance_radar_location_lidar`
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReceiveLidarLocation {
+    pub cmd_id: u16,
     pub opponent_hero_x: u16,
     pub opponent_hero_y: u16,
     pub opponent_engineer_x: u16,
@@ -78,6 +82,7 @@ pub struct ReceiveLidarLocation {
 ///   SdrJammingKeyData           (0x0A06)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReceiveSdr {
+    pub cmd_id: u16,
     // Position (0x0A01) — 6 robots × i16 x/y
     pub hero_x: i16,
     pub hero_y: i16,
