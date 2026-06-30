@@ -3,7 +3,6 @@ mod laser;
 mod pointcloud;
 mod rerun_visualizer;
 mod runtime;
-mod sdr;
 mod serial;
 mod services;
 mod state;

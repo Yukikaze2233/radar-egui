@@ -1,87 +1,44 @@
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 use crate::laser::protocol::LaserObservation;
-use crate::sdr::protocol::RoboMasterSignalInfo;
+use crate::zmq::data_format::{ReceiveSdr, ZmqData};
 
-#[derive(Default)]
-struct RadarFeedState {
-    signal: RoboMasterSignalInfo,
-    metadata: RadarFeedMetadata,
+#[derive(Clone)]
+pub struct ZmqReader {
+    inner: Arc<Mutex<ZmqData>>,
 }
 
 #[derive(Clone)]
-pub struct RadarFeedReader {
-    inner: Arc<Mutex<RadarFeedState>>,
+pub struct ZmqWriter {
+    inner: Arc<Mutex<ZmqData>>,
 }
 
-#[derive(Clone)]
-pub struct RadarFeedWriter {
-    inner: Arc<Mutex<RadarFeedState>>,
-}
-
-#[derive(Clone, Default)]
-pub struct RadarFeedMetadata {
-    pub packet_count: u64,
-    pub version: u64,
-    pub last_packet_at: Option<Instant>,
-}
-
-impl RadarFeedMetadata {
-    pub fn mark_packet(&mut self) {
-        self.packet_count += 1;
-        self.version += 1;
-        self.last_packet_at = Some(Instant::now());
-    }
-}
-
-impl Default for RadarFeedReader {
+impl Default for ZmqReader {
     fn default() -> Self {
         Self::new_pair().0
     }
 }
 
-impl RadarFeedReader {
-    pub fn new_pair() -> (Self, RadarFeedWriter) {
-        let inner = Arc::new(Mutex::new(RadarFeedState::default()));
-
+impl ZmqReader {
+    pub fn new_pair() -> (Self, ZmqWriter) {
+        let inner = Arc::new(Mutex::new(ZmqData::default()));
         (
-            Self {
-                inner: inner.clone(),
-            },
-            RadarFeedWriter { inner },
+            Self { inner: inner.clone() },
+            ZmqWriter { inner },
         )
     }
 
-    pub fn snapshot(&self) -> Option<RadarSnapshot> {
-        let state = self.inner.lock().ok()?;
-
-        Some(RadarSnapshot {
-            signal: state.signal.clone(),
-            metadata: state.metadata.clone(),
-        })
-    }
-
-    pub fn reset_metadata(&self) {
-        if let Ok(mut state) = self.inner.lock() {
-            state.metadata.packet_count = 0;
-            state.metadata.last_packet_at = None;
-        }
+    pub fn snapshot(&self) -> Option<ReceiveSdr> {
+        self.inner.lock().ok().map(|s| s.sdr.clone())
     }
 }
 
-impl RadarFeedWriter {
-    pub fn publish(&self, signal: RoboMasterSignalInfo) {
+impl ZmqWriter {
+    pub fn publish_sdr(&self, signal: ReceiveSdr) {
         if let Ok(mut state) = self.inner.lock() {
-            state.signal = signal;
-            state.metadata.mark_packet();
+            state.sdr = signal;
         }
     }
-}
-
-pub struct RadarSnapshot {
-    pub signal: RoboMasterSignalInfo,
-    pub metadata: RadarFeedMetadata,
 }
 
 #[derive(Clone)]

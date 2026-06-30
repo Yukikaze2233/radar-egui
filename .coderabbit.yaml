@@ -14,7 +14,7 @@ reviews:
 
   context: |
     阅读 AGENTS.md 了解项目架构。
-    阅读 TODO.md 对照当前实现进度，在评审时检查是否有遗漏的 TODO 项。
+    阅读 items.md 对照当前实现进度，在评审时检查是否有遗漏的 TODO 项。
     阅读 LearnLog.md 了解开发者 Rust 学习历程，避免重复踩坑。
 
   path_instructions:
@@ -24,19 +24,28 @@ reviews:
         - deku 位域注解的正确性 (bits, pad_bits_after)
         - CRC8/CRC16 校验逻辑
         - 滑动窗口 parser 的 index 推进 (防止死循环)
-        - 对照 TODO.md 检查协议字段是否完整实现
+        - 对照 items.md 检查协议字段是否完整实现
         - struct ctx 类型一致性 (Endian vs ())
-        - RobotInteractionData 的 user_data 边界处理
+        - RobotInteractionData 的 subcontext_data 边界处理
+        - serial_produced / zmq_produced 标志数组的置位/清零时序
+    - path: "src/zmq/**"
+      instructions: |
+        评审时关注:
+        - ZMQ_PUB_* / ZMQ_SUB_* 消息 ID 是否正确分发
+        - serde_json::from_slice/to_string 错误处理
+        - ZmqData 聚合结构体的 Clone 性能
+        - zmq_package / zmq_parser 的 match 臂是否完备
     - path: "src/app/**"
       instructions: "关注 Arc<Mutex> 死锁风险、egui 重绘间隔 100ms 约束"
     - path: "Cargo.toml"
       instructions: |
         检查依赖版本兼容性。
-        deku 是唯一序列化库，不要轻易引入 binrw/modular-bitfield。
+        deku 是唯一二进制序列化库，serde_json 用于 ZMQ JSON。
+        不要轻易引入 binrw/modular-bitfield。
     - path: "src/serial/data_format.rs"
       instructions: |
         重点关注:
-        - 新增结构体的 deku 注解是否与 RoboMaster 协议 PDF 一致
+        - 新增结构体的 deku 注解是否与 DJI 协议一致
         - 位域字段的 bit_order = "lsb" 是否正确
         - 多字节字段是否正确标注 endian = "little"
 

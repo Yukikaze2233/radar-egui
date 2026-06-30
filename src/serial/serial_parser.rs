@@ -1,4 +1,5 @@
 use super::serial_crc;
+use super::robot_interaction_id::DeviceId;
 use crate::serial::data_format::{
     self, CMD_ID_LENGTH, CRC16_LENGTH, DART_LAUNCH_CMD_ID, FRAME_HEADER_LENGTH, FRAME_HEADER_SOF,
     GAME_RESULT_CMD_ID, GAME_STATE_CMD_ID, IDX_DART_LAUNCH, IDX_GAME_RESULT, IDX_GAME_STATE,
@@ -22,8 +23,8 @@ impl SerialParser {
             protocol_data: protocol_data_input,
         }
     }
-    /// 扫描 read_buffer, 解析其中的完整帧并写入 self.protocol_data
-    /// 返回本次是否至少成功解析了一帧
+    /// Scan `read_buffer` for complete frames and write parsed data into shared state.
+    /// Returns whether at least one frame was successfully parsed.
     pub fn parser<'a>(&mut self, read_buffer: &'a mut Vec<u8>) -> (bool, &'a mut Vec<u8>) {
         let mut parsed_any = false;
         let mut index = 0;
@@ -68,37 +69,41 @@ impl SerialParser {
             match cmd_id {
                 GAME_STATE_CMD_ID => {
                     if let Ok((_, v)) = data_format::GameStateData::from_bytes((data, 0)) {
-                        self.protocol_data.lock().unwrap().game_state_data = v;
-                        self.protocol_data.lock().unwrap().serial_produced[IDX_GAME_STATE] = 1;
+                        let mut lock = self.protocol_data.lock().unwrap();
+                        lock.game_state_data = v;
+                        lock.serial_produced[IDX_GAME_STATE] = 1;
                         parsed_any = true;
                     }
                 }
                 GAME_RESULT_CMD_ID => {
                     if let Ok((_, v)) = data_format::GameResultData::from_bytes((data, 0)) {
-                        self.protocol_data.lock().unwrap().game_result_data = v;
-                        self.protocol_data.lock().unwrap().serial_produced[IDX_GAME_RESULT] = 1;
+                        let mut lock = self.protocol_data.lock().unwrap();
+                        lock.game_result_data = v;
+                        lock.serial_produced[IDX_GAME_RESULT] = 1;
                         parsed_any = true;
                     }
                 }
                 SITE_EVENT_CMD_ID => {
                     if let Ok((_, v)) = data_format::SiteEventData::from_bytes((data, 0)) {
-                        self.protocol_data.lock().unwrap().site_event_data = v;
-                        self.protocol_data.lock().unwrap().serial_produced[IDX_SITE_EVENT] = 1;
+                        let mut lock = self.protocol_data.lock().unwrap();
+                        lock.site_event_data = v;
+                        lock.serial_produced[IDX_SITE_EVENT] = 1;
                         parsed_any = true;
                     }
                 }
                 DART_LAUNCH_CMD_ID => {
                     if let Ok((_, v)) = data_format::DartLaunchData::from_bytes((data, 0)) {
-                        self.protocol_data.lock().unwrap().dart_launch_data = v;
-                        self.protocol_data.lock().unwrap().serial_produced[IDX_DART_LAUNCH] = 1;
+                        let mut lock = self.protocol_data.lock().unwrap();
+                        lock.dart_launch_data = v;
+                        lock.serial_produced[IDX_DART_LAUNCH] = 1;
                         parsed_any = true;
                     }
                 }
                 RADAR_MARK_PROCESS_CMD_ID => {
                     if let Ok((_, v)) = data_format::RadarMarkProcessData::from_bytes((data, 0)) {
-                        self.protocol_data.lock().unwrap().radar_mark_process_data = v;
-                        self.protocol_data.lock().unwrap().serial_produced
-                            [IDX_RADAR_MARK_PROCESS] = 1;
+                        let mut lock = self.protocol_data.lock().unwrap();
+                        lock.radar_mark_process_data = v;
+                        lock.serial_produced[IDX_RADAR_MARK_PROCESS] = 1;
                         parsed_any = true;
                     }
                 }
@@ -106,28 +111,25 @@ impl SerialParser {
                     if let Ok((_, v)) =
                         data_format::RadarAutonomousDecisionSyncData::from_bytes((data, 0))
                     {
-                        self.protocol_data
-                            .lock()
-                            .unwrap()
-                            .radar_autonomous_decision_sync_data = v;
-                        self.protocol_data.lock().unwrap().serial_produced
-                            [IDX_RADAR_AUTONOMOUS_DECISION_SYNC] = 1;
+                        let mut lock = self.protocol_data.lock().unwrap();
+                        lock.radar_autonomous_decision_sync_data = v;
+                        lock.serial_produced[IDX_RADAR_AUTONOMOUS_DECISION_SYNC] = 1;
                         parsed_any = true;
                     }
                 }
                 ROBOT_INTERACTION_CMD_ID => {
-                    if let Ok((remaining, header)) =
-                        data_format::RobotInteractionHeader::from_bytes((data, 0))
-                    {
-                        self.protocol_data.lock().unwrap().robot_interaction_data =
-                            data_format::RobotInteractionData {
-                                data_cmd_id: header.data_cmd_id,
-                                sender_id: header.sender_id,
-                                receiver_id: header.receiver_id,
-                                user_data: remaining.0.to_vec(),
-                            };
-                        self.protocol_data.lock().unwrap().serial_produced[IDX_ROBOT_INTERACTION] =
-                            1;
+                    if data.len() >= 6 {
+                        let sub_cmd = u16::from_le_bytes([data[0], data[1]]);
+                        let sender = DeviceId::from(u16::from_le_bytes([data[2], data[3]]));
+                        let receiver = DeviceId::from(u16::from_le_bytes([data[4], data[5]]));
+                        let mut lock = self.protocol_data.lock().unwrap();
+                        lock.robot_interaction_data = data_format::RobotInteractionData {
+                            subcontext_cmd_id: sub_cmd,
+                            sender_id: sender,
+                            receiver_id: receiver,
+                            subcontext_data: data[6..].to_vec(),
+                        };
+                        lock.serial_produced[IDX_ROBOT_INTERACTION] = 1;
                         parsed_any = true;
                     }
                 }

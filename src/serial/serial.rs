@@ -13,11 +13,13 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
+/// Serial port handle for raw byte I/O via `serial2`.
 pub struct Serial {
     serial_port: SerialPort,
 }
 
 impl Serial {
+    /// Open a serial port with the given config.
     pub fn new(config: SerialConfig) -> std::io::Result<Self> {
         let mut port = SerialPort::open(config.port_name, |mut s: Settings| {
             s.set_raw();
@@ -32,6 +34,7 @@ impl Serial {
         Ok(Self { serial_port: port })
     }
 
+    /// Read raw bytes from the serial port (max 1024 bytes per call).
     pub fn receive_data(&mut self) -> std::io::Result<Vec<u8>> {
         let mut buf = vec![0u8; 1024];
         let bytes_read = self.serial_port.read(&mut buf)?;
@@ -39,10 +42,12 @@ impl Serial {
         Ok(buf)
     }
 
+    /// Write bytes to the serial port.
     pub fn send_data(&self, data: &[u8]) -> std::io::Result<()> {
         self.serial_port.write_all(data)?;
         Ok(())
     }
+    /// Clone the underlying serial port for concurrent read/write.
     pub fn clone_serial_port(&self) -> std::io::Result<Self> {
         Ok(Self {
             serial_port: self.serial_port.try_clone()?,
@@ -50,6 +55,8 @@ impl Serial {
     }
 }
 
+/// Spawn a receiver thread that continuously reads from the serial port,
+/// parses incoming DJI frames, and writes to the shared `SerialProtocolData`.
 pub fn start_receiver(
     mut serial: Serial,
     protocol_data_receiver_state: Arc<Mutex<SerialProtocolData>>,
@@ -73,6 +80,9 @@ pub fn start_receiver(
     })
 }
 
+/// Spawn a transmitter thread that polls `zmq_produced` flags from shared state,
+/// constructs DJI frames with `serial_package`, and sends them over the serial port.
+/// Only clears a flag when the entire send chain succeeds.
 pub fn start_transmitter(
     serial: Serial,
     tx_state: Arc<Mutex<SerialProtocolData>>,
@@ -97,9 +107,7 @@ pub fn start_transmitter(
                     data.radar_autonomous_decision_sync_data.to_bytes(),
                 ),
                 6 => {
-                    let b = super::serial_package::robot_interaction_to_bytes(
-                        &data.robot_interaction_data,
-                    );
+                    let b = data.robot_interaction_data.to_bytes();
                     (ROBOT_INTERACTION_CMD_ID, Ok(b))
                 }
                 _ => continue,
@@ -109,10 +117,11 @@ pub fn start_transmitter(
                 if let Ok(frame_bytes) = frame.to_bytes() {
                     if let Err(e) = serial.send_data(&frame_bytes) {
                         eprintln!("Transmitter send error: {}", e);
+                    } else {
+                        data.zmq_produced[idx] = 0;
                     }
                 }
             }
-            data.zmq_produced[idx] = 0;
         }
         drop(data);
         thread::sleep(Duration::from_millis(10));

@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+use std::thread;
 use zmq2;
 pub fn zmq_init(
     thread_num: i32,
@@ -24,4 +26,10 @@ pub fn zmq_send(pub_socket: &zmq2::Socket, msg: &str) -> zmq2::Result<()> {
 }
 pub fn zmq_recv(sub_socket: &zmq2::Socket) -> zmq2::Result<Vec<u8>> {
     sub_socket.recv_bytes(0)
+}
+pub fn start_transmmit(pub_socket: &zmq2::Socket) -> thread::JoinHandle<()> {
+    todo!("ZMQ PUB thread not yet implemented")
+}
+pub fn start_receiver(sub_socket: &zmq2::Socket) -> thread::JoinHandle<()> {
+    todo!("ZMQ SUB thread not yet implemented")
 }

@@ -168,19 +168,17 @@ src/
 ├── zmq/                             # ZMQ 进程间通信层 (Rust ↔ C++/Python)
 │   ├── mod.rs                       # 模块声明
 │   ├── zmq.rs                       # PUB/SUB 初始化 + send/recv 封装
-│   ├── data_format.rs               # [TODO] JSON 消息格式定义 (cmd + payload)
-│   ├── zmq_package.rs               # [TODO] JSON 组包 (struct → JSON string)
-│   └── zmq_parser.rs                # [TODO] JSON 解包 (JSON string → struct)
+│   ├── data_format.rs               # ZmqMessageId + ZMQ_PUB_*/ZMQ_SUB_* 常量 + Transmit*/Receive* + ZmqData
+│   ├── zmq_package.rs               # JSON 组包 (SerialProtocolData → JSON string)
+│   ├── zmq_parser.rs                # JSON 解包 (JSON bytes → cmd_id 分发)
+│   └── fusion.rs                    # [TODO] 多源数据融合
 │
-├── sdr/                             # SDR 无线链路协议 (TCP)
-│   ├── mod.rs
-│   ├── protocol.rs                  # RoboMasterSignalInfo + 二进制解析器
-│   └── client.rs                    # TCP 客户端 (127.0.0.1:2000)
+├── sdr/                             # [REMOVED] 已删除，ZMQ 替代完成
 │
 ├── laser/                           # Laser 协议与视频
 │   ├── mod.rs                       # 模块声明
-│   ├── protocol.rs                  # LaserObservation UDP 解析
-│   ├── observer.rs                  # UDP 监听 (0.0.0.0:5001)
+│   ├── protocol.rs                  # LaserObservation + ModelCandidate 定义
+│   ├── observer.rs                  # [REMOVED] 原 UDP 监听，已由 ZMQ SUB 替代
 │   └── video.rs                     # 共享内存视频帧读取 (/laser_frame)
 ```
 
@@ -199,16 +197,29 @@ src/
 | 0x0301 | 机器人交互 | RobotInteractionHeader(6) + user_data(变长, ≤112) | ≤118 |
 | 0x0305 | 小地图雷达数据 | 12 机器人 × [x(u16), y(u16)] | 48 |
 
-### SDR 无线链路 (ZMQ, 待接入)
+### SDR 无线链路 (已由 ZMQ 替代)
 
-| cmd_id | 名称 | 字段 | 字节数 |
-|--------|------|------|--------|
-| 0x0A01 | 对方位置 | 6 机器人 × [i16, i16] | 24 |
-| 0x0A02 | 对方血量 | 6 机器人 × u16 | 12 |
-| 0x0A03 | 对方弹药 | 5 机器人 × u16 | 10 |
-| 0x0A04 | 对方宏观状态 | gold(u16×2) + 8 个位域状态 | 8 |
-| 0x0A05 | 对方增益 | 5 机器人 × 7 字段 + 哨兵姿态 | 36 |
-| 0x0A06 | 干扰密钥 | key([u8;6]) | 6 |
+ReceiveSdr 结构体对齐串口 data_format SDR 字段，拆为 6 个子结构体：
+
+| 子字段 | 串口对应 | 说明 |
+|--------|------|------|
+| `position: ReceiveSdrPosition` | `SdrEnemyRobotPositionData` | 6 机器人 × i16 x/y |
+| `blood: ReceiveSdrBlood` | `SdrEnemyRobotBloodData` | 6 机器人 × u16 |
+| `ammo: ReceiveSdrAmmo` | `SdrEnemyRobotRemainingAmmoData` | 5 机器人 × u16 |
+| `state: ReceiveSdrState` | `SdrEnemyRobotOverallStateData` | 经济 + 15 个状态位域 + occupation_status |
+| `gain: ReceiveSdrGain` | `SdrEnemyRobotGainData` | 5 机器人 × 5 增益字段 + 哨兵姿态 |
+| `key: ReceiveSdrKey` | `SdrJammingKeyData` | [u8; 6] |
+
+### ZMQ 消息 ID 空间
+
+| 常量 | 值 | 方向 | 消息类型 |
+|------|----|------|------|
+| `ZMQ_PUB_GAME_STATE` | 0x1001 | Rust → C++/Python | TransmitGameState |
+| `ZMQ_PUB_RADAR_MARK` | 0x1002 | Rust → C++/Python | TransmitRadarMarkProcess |
+| `ZMQ_PUB_RADAR_SYNC` | 0x1003 | Rust → C++/Python | TransmitRadarSync |
+| `ZMQ_SUB_LIDAR_LOCATION` | 0x2001 | C++/Python → Rust | ReceiveLidarLocation |
+| `ZMQ_SUB_SDR` | 0x2002 | C++/Python → Rust | ReceiveSdr |
+| `ZMQ_SUB_LASER` | 0x2003 | C++/Python → Rust | ReceiveLaser |
 
 ### 机器人交互子内容 (0x0301.data_cmd_id)
 

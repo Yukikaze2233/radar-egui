@@ -1,6 +1,7 @@
 use super::{ActiveTab, ConnectionStatus, EnemyColor, RadarApp};
 use crate::services::script_runner::LaserScript;
-use crate::state::{LaserSnapshot, RadarSnapshot};
+use crate::state::{LaserSnapshot};
+use crate::zmq::data_format::ReceiveSdr;
 use crate::theme;
 use crate::widgets::{LaserPanel, StatusPanels};
 
@@ -99,7 +100,7 @@ impl RadarApp {
     pub(super) fn show_radar_sidebar(
         &mut self,
         ui: &mut egui::Ui,
-        radar_snapshot: Option<&RadarSnapshot>,
+        radar_snapshot: Option<&ReceiveSdr>,
     ) {
         Self::white_card(ui, "连接", |ui| {
             Self::status_chip(
@@ -118,14 +119,7 @@ impl RadarApp {
                             .color(theme::text_muted())
                             .size(13.0),
                     );
-                    ui.add(egui::TextEdit::singleline(&mut self.ip).desired_width(f32::INFINITY));
-                    ui.end_row();
-                    ui.label(
-                        egui::RichText::new("Port")
-                            .color(theme::text_muted())
-                            .size(13.0),
-                    );
-                    ui.add(egui::TextEdit::singleline(&mut self.port).desired_width(f32::INFINITY));
+                    ui.add(egui::TextEdit::singleline(&mut self.zmq_addr).desired_width(f32::INFINITY));
                     ui.end_row();
                 });
             ui.add_space(12.0);
@@ -178,7 +172,7 @@ impl RadarApp {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                StatusPanels::new().show(ui, radar_snapshot.map(|snapshot| &snapshot.signal));
+                StatusPanels::new().show(ui, radar_snapshot.map(|s| s));
             });
     }
 
@@ -188,7 +182,7 @@ impl RadarApp {
         laser_snapshot: Option<&LaserSnapshot>,
     ) {
         let laser_online = laser_snapshot.is_some_and(|snapshot| snapshot.online);
-        let laser_listening = self.laser_runtime.is_started();
+        let laser_listening = self.zmq_laser.is_started();
 
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
@@ -217,7 +211,7 @@ impl RadarApp {
                                     .size(13.0),
                             );
                             ui.add(
-                                egui::TextEdit::singleline(&mut self.laser_port)
+                                egui::TextEdit::singleline(&mut self.zmq_addr)
                                     .desired_width(f32::INFINITY),
                             );
                             ui.end_row();
