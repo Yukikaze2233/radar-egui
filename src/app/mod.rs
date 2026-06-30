@@ -120,7 +120,7 @@ impl Default for RadarApp {
         let pointcloud_runtime = PointCloudRuntime::new(pointcloud_writer);
 
         Self {
-            active_tab: ActiveTab::Sdr,
+            active_tab: ActiveTab::Laser,
             dark_mode: false,
             minimap_texture: None,
             minimap_texture_failed: false,

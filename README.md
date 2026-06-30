@@ -76,7 +76,7 @@ rerun assets/map.rrd
 
 ## UI 布局
 
-- **左侧模式栏**：Radar / SDR / Laser 切换、深浅色主题、数据统计
+- **左侧模式栏**：Laser / SDR / Radar 切换、深浅色主题、数据统计
 - **中央主舞台**：Radar 点云状态面板，SDR 小地图（拖拽/缩放），Laser 视频画面（16:9）
 - **Laser 右侧面板**：
   - 数据源 — UDP 连接状态与重连
