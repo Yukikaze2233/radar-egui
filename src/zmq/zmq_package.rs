@@ -1,11 +1,11 @@
 use std::io;
 use std::sync::{Arc, Mutex};
 
-use super::data_format::{TransmitGameState, TransmitRadarMarkProcess, TransmitRadarSync};
-use crate::serial::data_format::{
-    SerialProtocolData, GAME_STATE_CMD_ID, RADAR_AUTONOMOUS_DECISION_SYNC_CMD_ID,
-    RADAR_MARK_PROCESS_CMD_ID,
+use super::data_format::{
+    TransmitGameState, TransmitRadarMarkProcess, TransmitRadarSync,
+    ZMQ_PUB_GAME_STATE, ZMQ_PUB_RADAR_MARK, ZMQ_PUB_RADAR_SYNC,
 };
+use crate::serial::data_format::SerialProtocolData;
 
 fn invalid_cmd_id(cmd: u16) -> serde_json::Error {
     serde_json::Error::io(io::Error::new(
@@ -22,7 +22,7 @@ pub fn zmq_package(
     let lock = protocol_data.lock().unwrap();
 
     let json = match cmd_id {
-        GAME_STATE_CMD_ID => {
+        ZMQ_PUB_GAME_STATE => {
             let src = &lock.game_state_data;
             let data = TransmitGameState {
                 cmd_id,
@@ -33,7 +33,7 @@ pub fn zmq_package(
             };
             serde_json::to_string(&data)?
         }
-        RADAR_MARK_PROCESS_CMD_ID => {
+        ZMQ_PUB_RADAR_MARK => {
             let src = &lock.radar_mark_process_data;
             let data = TransmitRadarMarkProcess {
                 cmd_id,
@@ -52,7 +52,7 @@ pub fn zmq_package(
             };
             serde_json::to_string(&data)?
         }
-        RADAR_AUTONOMOUS_DECISION_SYNC_CMD_ID => {
+        ZMQ_PUB_RADAR_SYNC => {
             let src = &lock.radar_autonomous_decision_sync_data;
             let data = TransmitRadarSync {
                 cmd_id,
