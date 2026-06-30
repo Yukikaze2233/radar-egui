@@ -4,6 +4,8 @@ use super::serial_crc;
 use deku::prelude::*;
 use std::sync::atomic::{AtomicU8, Ordering};
 static PACKET_SEQ: AtomicU8 = AtomicU8::new(0);
+/// Build a complete DJI serial frame with auto-incrementing sequence number,
+/// CRC8 header check, and CRC16 frame check.
 pub fn serial_package(cmd_id: u16, data: Vec<u8>) -> SerialFrame {
     let seq = PACKET_SEQ.fetch_add(1, Ordering::SeqCst);
     let mut frame_header: SerialFrameHeader = SerialFrameHeader {
@@ -28,6 +30,7 @@ pub fn serial_package(cmd_id: u16, data: Vec<u8>) -> SerialFrame {
     };
     package
 }
+/// Build a `RobotInteractionData` struct for outbound robot-to-robot commands.
 pub fn robot_interaction_package(
     cmd_id: &u16,
     sender_id: &DeviceId,
@@ -43,6 +46,7 @@ pub fn robot_interaction_package(
     robot_interaction
 }
 
+/// Serialize a `RobotInteractionData` to bytes (header + user_data).
 pub fn robot_interaction_to_bytes(pkg: &RobotInteractionData) -> Vec<u8> {
     let header = RobotInteractionHeader {
         data_cmd_id: pkg.data_cmd_id,

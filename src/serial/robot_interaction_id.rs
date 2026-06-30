@@ -5,7 +5,7 @@ use deku::prelude::*;
 pub enum DeviceId {
     #[deku(id = "0")]
     Default,
-    // 红方
+    // Red team
     #[deku(id = "1")]
     RedHero,
     #[deku(id = "2")]
@@ -28,7 +28,7 @@ pub enum DeviceId {
     RedOutpost,
     #[deku(id = "11")]
     RedBase,
-    // 蓝方
+    // Blue team
     #[deku(id = "101")]
     BlueHero,
     #[deku(id = "102")]
@@ -51,7 +51,7 @@ pub enum DeviceId {
     BlueOutpost,
     #[deku(id = "111")]
     BlueBase,
-    // 裁判系统
+    // Referee system
     #[deku(id = "0x8080")]
     RefereeServer,
 }

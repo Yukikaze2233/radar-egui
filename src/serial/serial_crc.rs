@@ -1,4 +1,4 @@
-// DJI 裁判系统 CRC 校验, 直译自通信协议附录一
+// DJI referee system CRC, ported from protocol appendix
 // CRC8: G(x)=x^8+x^5+x^4+1, init=0xFF
 // CRC16: poly=0x1021, init=0xFFFF
 
@@ -56,13 +56,13 @@ fn get_crc8(data: &[u8], mut crc: u8) -> u8 {
     crc
 }
 
-/// Verify_CRC8_Check_Sum: msg 末字节为 CRC8, 校验前面所有字节
+/// Verify_CRC8_Check_Sum: last byte is CRC8, validate all preceding bytes
 pub fn verify_crc8(msg: &[u8]) -> bool {
     let n = msg.len();
     n > 2 && get_crc8(&msg[..n - 1], CRC8_INIT) == msg[n - 1]
 }
 
-/// Append_CRC8_Check_Sum: 把 CRC8 写入 msg 末字节
+/// Append_CRC8_Check_Sum: write CRC8 to last byte of msg
 pub fn append_crc8(msg: &mut [u8]) -> Result<u8, bool> {
     let n = msg.len();
     if n > 2 {
@@ -82,7 +82,7 @@ fn get_crc16(data: &[u8], mut crc: u16) -> u16 {
     crc
 }
 
-/// Verify_CRC16_Check_Sum: msg 末 2 字节为 CRC16 (小端), 整包校验
+/// Verify_CRC16_Check_Sum: last 2 bytes are CRC16 (little-endian), validate entire packet
 pub fn verify_crc16(msg: &[u8]) -> bool {
     let n = msg.len();
     if n <= 2 {
@@ -92,7 +92,7 @@ pub fn verify_crc16(msg: &[u8]) -> bool {
     (expected & 0xff) as u8 == msg[n - 2] && ((expected >> 8) & 0xff) as u8 == msg[n - 1]
 }
 
-/// Append_CRC16_Check_Sum: 把 CRC16 (小端) 写入 msg 末 2 字节
+/// Append_CRC16_Check_Sum: write CRC16 (little-endian) to last 2 bytes of msg
 pub fn append_crc16(msg: &mut [u8]) -> Result<u16, bool> {
     let n = msg.len();
     if n > 2 {
