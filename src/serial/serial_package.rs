@@ -1,5 +1,4 @@
-use super::data_format::{RobotInteractionData, SerialFrame, SerialFrameHeader};
-use super::robot_interaction_id::DeviceId;
+use super::data_format::{SerialFrame, SerialFrameHeader};
 use super::serial_crc;
 use deku::prelude::*;
 use std::sync::atomic::{AtomicU8, Ordering};
