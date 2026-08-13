@@ -104,6 +104,65 @@ impl ZmqPubRuntime {
     }
 }
 
+// ── Noise Stream (127.0.0.1:3000, 7 bytes) ──
+
+pub struct NoiseStreamRuntime {
+    stop: Arc<AtomicBool>,
+    handle: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl NoiseStreamRuntime {
+    pub fn start(shared: Arc<Mutex<SharedData>>) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = std::thread::spawn(move || {
+            use std::net::UdpSocket;
+            let socket = match UdpSocket::bind("127.0.0.1:3000") {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("Failed to bind noise stream to 127.0.0.1:3000: {}", e);
+                    return;
+                }
+            };
+            let mut buf = [0u8; 7];
+            log::info!("Noise stream listener started on 127.0.0.1:3000");
+            while !stop.load(Ordering::Relaxed) {
+                match socket.recv_from(&mut buf) {
+                    Ok((len, _addr)) => {
+                        if len == 7 {
+                            let data = buf[..7].try_into().unwrap();
+                            let mut shared = shared.lock().unwrap();
+                            shared.noise = data;
+                            log::debug!("Noise stream received: {:02X?}", data);
+                        }
+                    }
+                    Err(e) => {
+                        if stop.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        log::warn!("Noise stream recv error: {}", e);
+                    }
+                }
+            }
+            log::info!("Noise stream listener stopped");
+        });
+        Self {
+            stop,
+            handle: Mutex::new(Some(handle)),
+        }
+    }
+
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Ok(mut h) = self.handle.lock() {
+            h.take();
+        }
+    }
+
+    pub fn is_started(&self) -> bool {
+        !self.stop.load(Ordering::Relaxed)
+    }
+}
+
 // ── Video (SHM) ──
 
 pub struct VideoRuntime {
