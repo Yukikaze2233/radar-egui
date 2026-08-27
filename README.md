@@ -136,6 +136,16 @@ rerun assets/map.rrd
 
 ## 截图
 
+### 面板（Laser / SDR / Radar / Serial）
+
+![Laser 面板](assets/img_2026-08-10_09-43-46.png)
+
+![SDR 面板](assets/img_2026-08-10_09-43-57.png)
+
+![Radar 面板](assets/img_2026-08-10_09-44-10.png)
+
+![Serial 面板](assets/img_2026-08-10_09-44-21.png)
+
 ### Rerun 3D 点云
 
 ![Rerun 点云 1](assets/img_2026-06-25_22-32-09.png)
